@@ -72,7 +72,7 @@ android {
         // Extract .so files at install: llama.cpp's backend loader scans nativeLibraryDir for the
         // libggml-cpu-*.so variants, which it cannot see inside the APK.
         jniLibs { useLegacyPackaging = true }
-        resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+        resources { excludes += listOf("/META-INF/{AL2.0,LGPL2.1}", "META-INF/LICENSE.md", "META-INF/NOTICE.md") }
     }
 }
 
@@ -101,6 +101,8 @@ dependencies {
     implementation(libs.coroutines.android)
     implementation(libs.pdfbox.android)
     implementation(libs.androidx.documentfile)
+    implementation(libs.android.mail)
+    implementation(libs.android.activation)
     testImplementation(libs.junit)
     testImplementation(libs.org.json)
 }

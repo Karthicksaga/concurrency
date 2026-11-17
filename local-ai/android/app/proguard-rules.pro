@@ -9,3 +9,14 @@
 -dontwarn org.bouncycastle.**
 -keep class com.tom_roush.pdfbox.** { *; }
 -keep class com.tom_roush.fontbox.** { *; }
+
+# JavaMail (android-mail): providers and data handlers are loaded reflectively.
+-keep class javax.mail.** { *; }
+-keep class com.sun.mail.** { *; }
+-keep class javax.activation.** { *; }
+-keep class com.sun.activation.** { *; }
+-keep class myjava.awt.datatransfer.** { *; }
+-dontwarn java.awt.**
+-dontwarn javax.security.sasl.**
+-dontwarn javax.naming.**
+-dontwarn org.apache.harmony.**

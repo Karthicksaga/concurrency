@@ -35,7 +35,8 @@ The APK is signed with a **public test key** committed in `app/debug-release.key
 | **Folder sync:** link a phone folder to a knowledge base; new, changed and deleted files sync every 6 h, on demand and before the digest | ✅ |
 | **Phone tools:** Phone Dialer (opens the dialer, you press Call; contacts by name optional), SMS Reader (read-only, off by default) | ✅ |
 | **Daily digest:** at your chosen time, an on-device summary of SMS, documents, notes and workflows → notification + saved chat + Email button (opens your email app pre-filled) | ✅ |
-| OCR for scanned PDFs, isolated parser process, GPU/NPU, automatic email sending (needs a privacy decision) | ⏳ Later |
+| **Automatic digest email (opt-in):** sends through your own mail server (Gmail/Outlook/Yahoo/Zoho/custom) with an app password stored in the Android Keystore; test email; falls back to the Email button | ✅ |
+| OCR for scanned PDFs, isolated parser process, GPU/NPU, Gmail sign-in (OAuth) | ⏳ Later |
 
 ## Lite mode
 

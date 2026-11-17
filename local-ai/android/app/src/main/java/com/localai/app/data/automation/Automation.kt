@@ -37,6 +37,7 @@ import com.localai.app.runtime.inference.LlamaEngine
 import com.localai.app.runtime.inference.SamplingParams
 import com.localai.app.runtime.inference.complete
 import com.localai.app.data.chat.visibleText
+import kotlinx.coroutines.flow.first
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -60,6 +61,7 @@ interface AutomationEntryPoint {
     fun notes(): NoteDao
     fun kdao(): KnowledgeDao
     fun runs(): RunDao
+    fun email(): com.localai.app.data.email.EmailService
 }
 
 object Automation {
@@ -156,6 +158,11 @@ class DigestWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         ep.chats().upsertConversation(ConversationEntity(cid, "Daily digest · $date", s.activeModelId, "Daily digest", now, now))
         ep.chats().upsertMessage(MessageEntity(UUID.randomUUID().toString(), cid, "assistant", digest, "COMPLETE", s.activeModelId, null, null, null, now))
 
+        // Optional automatic sending through the user's own mail server (ADR-0014).
+        val emailCfg = ep.email().config.first()
+        val sendError = if (emailCfg.enabled && emailCfg.ready) ep.email().send("Daily digest · $date", digest + "\n\n— Written on your phone by LOCAL AI") else null
+        val autoSent = emailCfg.enabled && emailCfg.ready && sendError == null
+
         // Email action: opens the user's email app pre-filled; the user presses Send.
         val email = Intent(Intent.ACTION_SEND).apply {
             type = "message/rfc822"
@@ -166,7 +173,9 @@ class DigestWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val openPi = PendingIntent.getActivity(applicationContext, 2, Intent(applicationContext, MainActivity::class.java).putExtra("open_chat", cid)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         nm.notify(4343, NotificationCompat.Builder(applicationContext, LocalAiApp.CHANNEL_DIGEST)
-            .setSmallIcon(R.drawable.ic_stat_download).setContentTitle("Your daily digest · $date")
+            .setSmallIcon(R.drawable.ic_stat_download)
+            .setContentTitle(if (autoSent) "Daily digest emailed to ${emailCfg.to}" else if (sendError != null) "Daily digest · email not sent" else "Your daily digest · $date")
+            .setSubText(sendError)
             .setContentText(digest.lineSequence().firstOrNull { it.isNotBlank() } ?: digest)
             .setStyle(NotificationCompat.BigTextStyle().bigText(digest.take(1500)))
             .setContentIntent(openPi).setAutoCancel(true)

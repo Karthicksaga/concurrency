@@ -63,6 +63,7 @@ class SettingsViewModel @Inject constructor(
     private val models: ModelRepository,
     private val chats: ChatDao,
     device: DeviceCapabilityService,
+    val email: com.localai.app.data.email.EmailService,
 ) : ViewModel() {
     val device = device.profile
     val settings = repo.settings.stateIn(viewModelScope, SharingStarted.Eagerly, null)
@@ -140,6 +141,9 @@ fun SettingsScreen(nav: NavController, vm: SettingsViewModel = hiltViewModel()) 
             Text("Runs only when the battery is not low. On small phones the model is released afterwards.", fontSize = 11.5.sp, color = La.colors.text3)
         }
 
+        SectionHeader("Send the digest automatically")
+        EmailCard(vm)
+
         SectionHeader("Folders")
         LaCard {
             ToggleRow("Sync linked folders", "Re-check folders linked to knowledge bases every 6 hours", settings.folderSync) { v -> vm.set { setFolderSync(v) } }
@@ -176,5 +180,53 @@ private fun ToggleRow(title: String, sub: String, checked: Boolean, onChange: (B
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) { Text(title, fontSize = 14.sp, fontWeight = FontWeight.Medium); Text(sub, fontSize = 12.sp, color = La.colors.text3) }
         Switch(checked = checked, onCheckedChange = onChange)
+    }
+}
+
+
+@Composable
+private fun EmailCard(vm: SettingsViewModel) {
+    val cfg by vm.email.config.collectAsStateWithLifecycle(com.localai.app.data.email.EmailConfig())
+    var draft by remember(cfg) { mutableStateOf(cfg) }
+    var password by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val preset = com.localai.app.data.email.SMTP_PRESETS.first { it.id == draft.presetId }
+    suspend fun persist(): Boolean {
+        val d = draft.copy(to = draft.to.ifBlank { draft.username })
+        if (d.enabled && (d.username.isBlank() || (!d.hasPassword && password.isBlank()) || d.host.isBlank())) { status = "Fill in the email address and app password first."; return false }
+        vm.email.save(d, password); password = ""; return true
+    }
+    LaCard {
+        Text("Optional. The phone sends the digest itself through your email provider. It connects only to your mail server, only for this. " +
+            "Your password is encrypted with the phone's hardware keystore and never leaves the phone.", fontSize = 12.5.sp, color = La.colors.text2)
+        ToggleRow("Send automatically", if (cfg.ready) "To ${cfg.to} via ${cfg.host}" else "Set up your account below", draft.enabled) { draft = draft.copy(enabled = it) }
+        FlowRowSimple {
+            com.localai.app.data.email.SMTP_PRESETS.forEach { p ->
+                FilterChip(draft.presetId == p.id, { draft = draft.copy(presetId = p.id, host = if (p.id == "custom") draft.host else p.host, port = p.port, security = p.security) }, { Text(p.name) })
+            }
+        }
+        Text(preset.help, fontSize = 12.sp, color = La.colors.text3, modifier = Modifier.padding(vertical = 6.dp))
+        if (draft.presetId == "custom") {
+            OutlinedTextField(draft.host, { draft = draft.copy(host = it.trim()) }, label = { Text("SMTP server") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(draft.port.toString(), { v -> v.toIntOrNull()?.let { draft = draft.copy(port = it) } }, label = { Text("Port") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            FlowRowSimple { listOf(com.localai.app.data.email.Security.SSL, com.localai.app.data.email.Security.STARTTLS).forEach { sec ->
+                FilterChip(draft.security == sec, { draft = draft.copy(security = sec) }, { Text(sec.label) }) } }
+        }
+        OutlinedTextField(draft.username, { draft = draft.copy(username = it.trim()) }, label = { Text("Your email address") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(password, { password = it }, label = { Text(if (cfg.hasPassword) "App password (saved, type to replace)" else "App password") }, singleLine = true,
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(draft.to, { draft = draft.copy(to = it.trim()) }, label = { Text("Send to (default: yourself)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+            androidx.compose.material3.Button(enabled = !busy, onClick = { scope.launch { if (persist()) status = "Saved." } }) { Text("Save") }
+            OutlinedButton(enabled = !busy, onClick = { scope.launch {
+                busy = true; status = "Sending test email…"
+                if (persist()) { status = vm.email.send("LOCAL AI test email", "This is a test from LOCAL AI on your phone. Daily digests will arrive like this.")?.let { "Failed: $it" } ?: "Test email sent to ${draft.to.ifBlank { draft.username }}." }
+                busy = false
+            } }) { Text("Send test email") }
+        }
+        if (cfg.hasPassword) TextButton(onClick = { scope.launch { vm.email.forget(); status = "Email settings and password removed." } }) { Text("Forget account", color = La.colors.bad) }
+        status?.let { Text(it, fontSize = 12.5.sp, color = if (it.startsWith("Failed") || it.startsWith("Fill")) La.colors.bad else La.colors.ok) }
     }
 }

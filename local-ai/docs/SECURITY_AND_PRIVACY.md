@@ -6,7 +6,7 @@ Status: Draft for approval · Phase 3 output
 
 1. Your chats, documents, agents and memories stay on this device.
 2. LOCAL AI works without an account and without internet once a model is installed.
-3. The app connects to the internet only when you download or update a model or refresh the model catalog. You can see every connection in **Settings › Privacy › Network log**.
+3. The app connects to the internet only when you download or update a model or refresh the model catalog, and, only if you turn it on, to send your daily digest to your own mail server (ADR-0014). You can see every connection in **Settings › Privacy › Network log**.
 4. No analytics, no ads, no third-party SDKs that phone home.
 5. You can delete any memory, document, conversation or everything at once.
 
