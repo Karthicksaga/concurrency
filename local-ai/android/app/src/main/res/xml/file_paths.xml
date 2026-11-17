@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only these app-private folders can be handed to other apps, one file at a time, with a temporary grant. -->
+<paths>
+    <cache-path name="camera" path="camera/" />
+    <files-path name="exports" path="exports/" />
+</paths>

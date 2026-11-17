@@ -3,6 +3,7 @@ package com.localai.app.data.agents
 import com.localai.app.data.db.AgentEntity
 import com.localai.app.data.knowledge.KnowledgeService
 import com.localai.app.data.knowledge.SourceRef
+import com.localai.app.data.media.Images
 import com.localai.app.data.models.ModelRepository
 import com.localai.app.data.settings.SettingsRepository
 import com.localai.app.data.settings.policyFor
@@ -18,6 +19,7 @@ import com.localai.app.runtime.inference.GenerationStats
 import com.localai.app.runtime.inference.Grammars
 import com.localai.app.runtime.inference.InferenceError
 import com.localai.app.runtime.inference.LlamaEngine
+import com.localai.app.runtime.inference.RgbImage
 import com.localai.app.runtime.inference.SamplingParams
 import com.localai.app.runtime.inference.StopReason
 import com.localai.app.runtime.inference.complete
@@ -36,6 +38,7 @@ data class AgentRequest(
     val kbIds: List<String>,
     val maxTokens: Int? = null,
     val allowTools: Boolean = true,
+    val image: java.io.File? = null,      // photo attached to a recent user message (vision models)
 )
 
 data class AgentResult(
@@ -72,9 +75,14 @@ class AgentRunner @Inject constructor(
         val loaded = if (agentModel != null && models.isInstalled(agentModel) && (engine.state.value as? EngineState.Ready)?.modelId != agentModel)
             models.activate(agentModel).map { agentModel } else models.ensureLoaded()
         val modelId = loaded.getOrElse { return AgentResult(it.message ?: "The model could not be loaded.", "ERROR", emptyList(), emptyList(), null, null) }
+        if (req.image != null && (engine.state.value as? EngineState.Ready)?.vision != true)
+            return AgentResult(InferenceError.NO_VISION.message, "ERROR", emptyList(), emptyList(), null, modelId)
 
         val s = settings.current()
         val policy = policyFor(s, device.profile)
+        // Smaller images in lite mode: fewer image tokens, less memory and a faster first word.
+        val rgb: RgbImage? = req.image?.let { progress(AgentProgress.Phase("Looking at the photo…")); Images.toRgb(it, if (policy.lite) 512 else 768) }
+        if (req.image != null && rgb == null) return AgentResult("The photo could not be read. Attach it again.", "ERROR", emptyList(), emptyList(), null, modelId)
         val ctx = (engine.state.value as? EngineState.Ready)?.contextLength ?: policy.defaults.contextLength
         val profile = settings.profileNow(modelId, policy.defaults.contextLength)
         val query = req.history.lastOrNull { it.role == "user" }?.content.orEmpty()
@@ -88,7 +96,7 @@ class AgentRunner @Inject constructor(
         val perms = tools.permissions.first()
         val enabled = (a?.toolList ?: emptyList()).filter { it != "delegate_to_agent" && perms[it] != Permission.OFF }.mapNotNull { tools.spec(it) }
         val maxCalls = if (policy.lite) minOf(a?.maxToolCalls ?: 0, 2) else a?.maxToolCalls ?: 0
-        if (req.allowTools && enabled.isNotEmpty() && maxCalls > 0) {
+        if (req.allowTools && req.image == null && enabled.isNotEmpty() && maxCalls > 0) {
             val schema = JSONObject().put("type", "object").put("required", JSONArray(listOf("action", "tool", "input"))).put("properties", JSONObject()
                 .put("action", JSONObject().put("enum", JSONArray(listOf("answer", "use_tool"))))
                 .put("tool", JSONObject().put("enum", JSONArray(enabled.map { it.id })))
@@ -139,7 +147,7 @@ class AgentRunner @Inject constructor(
         var text = ""; var status = "COMPLETE"; var stats: GenerationStats? = null
         while (true) {
             var overflow = false
-            engine.generate(listOf(ChatTurn("system", system)) + history, params).collect { ev ->
+            engine.generate(listOf(ChatTurn("system", system)) + history, params, image = rgb).collect { ev ->
                 when (ev) {
                     is GenEvent.Delta -> { text += ev.text; progress(AgentProgress.Text(text)) }
                     is GenEvent.Done -> { stats = ev.stats; status = if (ev.reason == StopReason.ABORTED) "STOPPED" else "COMPLETE" }

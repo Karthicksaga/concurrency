@@ -64,6 +64,7 @@ class SettingsViewModel @Inject constructor(
     private val chats: ChatDao,
     device: DeviceCapabilityService,
     val email: com.localai.app.data.email.EmailService,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
 ) : ViewModel() {
     val device = device.profile
     val settings = repo.settings.stateIn(viewModelScope, SharingStarted.Eagerly, null)
@@ -73,6 +74,7 @@ class SettingsViewModel @Inject constructor(
         models.installed.first().forEach { models.delete(it.id) }
         models.modelsDir.listFiles()?.forEach { it.delete() }
         chats.deleteAllMessages(); chats.deleteAllConversations()
+        listOf("chat_images", "exports").forEach { java.io.File(context.filesDir, it).deleteRecursively() }
         repo.clearAll()
         onDone()
     }
@@ -116,6 +118,30 @@ fun SettingsScreen(nav: NavController, vm: SettingsViewModel = hiltViewModel()) 
             Row { TextButton(onClick = { vm.set { setSystemPrompt(prompt) } }) { Text("Save prompt") }; TextButton(onClick = { prompt = DEFAULT_SYSTEM_PROMPT; vm.set { setSystemPrompt(DEFAULT_SYSTEM_PROMPT) } }) { Text("Reset") } }
         }
 
+        SectionHeader("Voice")
+        LaCard {
+            Text("Talk to the model and hear its answers. Speech is recognised on the phone when it has an offline speech pack " +
+                "(Android settings › Speech recognition / Google › Offline speech); replies are spoken by the phone's text-to-speech voice.",
+                fontSize = 12.5.sp, color = La.colors.text2)
+            Spacer(Modifier.height(8.dp))
+            Text("Language", fontWeight = FontWeight.Medium)
+            FlowRowSimple {
+                VOICE_LANGUAGES.forEach { (tag, label) ->
+                    FilterChip(selected = settings.voiceLanguage == tag, onClick = { vm.set { setVoice(tag, settings.speechRate, settings.readAloud) } }, label = { Text(label) })
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            Text("Speaking speed", fontWeight = FontWeight.Medium)
+            FlowRowSimple {
+                listOf(0.8f to "Slow", 1.0f to "Normal", 1.25f to "Fast", 1.5f to "Faster").forEach { (r, l) ->
+                    FilterChip(selected = kotlin.math.abs(settings.speechRate - r) < 0.01f, onClick = { vm.set { setVoice(settings.voiceLanguage, r, settings.readAloud) } }, label = { Text(l) })
+                }
+            }
+            ToggleRow("Read replies aloud", "Speak every answer in chat (you can also tap the speaker under any answer).", settings.readAloud) { v -> vm.set { setVoice(settings.voiceLanguage, settings.speechRate, v) } }
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            TextButton(onClick = { runCatching { ctx.startActivity(android.content.Intent("com.android.settings.TTS_SETTINGS").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) } }) { Text("Text-to-speech settings") }
+        }
+
         SectionHeader("Daily digest")
         LaCard {
             val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -152,7 +178,7 @@ fun SettingsScreen(nav: NavController, vm: SettingsViewModel = hiltViewModel()) 
         SectionHeader("Downloads & privacy")
         LaCard {
             ToggleRow("Download on Wi-Fi only", "Avoid using mobile data for large model files.", settings.wifiOnly) { v -> vm.set { setWifiOnly(v) } }
-            KeyValue("Internet access", "Model downloads only")
+            KeyValue("Internet access", "Model downloads (and your digest email, if turned on)")
             KeyValue("Analytics", "None")
             KeyValue("Cloud backup", "Disabled")
         }
@@ -174,6 +200,13 @@ fun SettingsScreen(nav: NavController, vm: SettingsViewModel = hiltViewModel()) 
         confirmButton = { TextButton(onClick = { erase = false; vm.eraseAll { nav.navigate("onboarding") { popUpTo(0) } } }) { Text("Erase", color = La.colors.bad) } },
         dismissButton = { TextButton(onClick = { erase = false }) { Text("Cancel") } })
 }
+
+/** Voice languages offered in Settings (BCP-47); availability depends on the phone's speech packs. */
+val VOICE_LANGUAGES = listOf(
+    "" to "Phone language", "en-US" to "English (US)", "en-IN" to "English (India)", "en-GB" to "English (UK)",
+    "hi-IN" to "हिन्दी", "ta-IN" to "தமிழ்", "te-IN" to "తెలుగు", "kn-IN" to "ಕನ್ನಡ", "ml-IN" to "മലയാളം", "bn-IN" to "বাংলা", "mr-IN" to "मराठी",
+    "es-ES" to "Español", "fr-FR" to "Français", "de-DE" to "Deutsch", "ar-SA" to "العربية", "zh-CN" to "中文", "ja-JP" to "日本語",
+)
 
 @Composable
 private fun ToggleRow(title: String, sub: String, checked: Boolean, onChange: (Boolean) -> Unit) {

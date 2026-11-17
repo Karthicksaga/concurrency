@@ -24,7 +24,15 @@ data class ModelSpec(
     val purpose: String = "gen",          // gen | embed
     val queryPrefix: String = "",
     val passagePrefix: String = "",
-)
+    // Vision models: image encoder (mmproj) downloaded next to the model
+    val projectorUrl: String? = null,
+    val projectorSha256: String? = null,
+    val projectorFile: String? = null,
+    val projectorSize: Long = 0,
+) {
+    val vision get() = projectorFile != null
+    val totalBytes get() = sizeBytes + projectorSize
+}
 
 /**
  * Curated catalog. URLs, sizes and SHA-256 hashes were checked against Hugging Face on 2026-11-17.
@@ -67,9 +75,11 @@ object Catalog {
             listOf("Reasoning"), hf("bartowski/microsoft_Phi-4-mini-instruct-GGUF", "microsoft_Phi-4-mini-instruct-Q4_K_M.gguf"),
             "01999f17c39cc3074afae5e9c539bc82d45f2dd7faa3917c66cbef76fce8c0c2", "microsoft_Phi-4-mini-instruct-Q4_K_M.gguf"),
         ModelSpec("gemma-3-4b", "Gemma 3 4B IT", "Gemma", 3.88, "Q4_K_M", 2_489_757_856, "gemma3", 131072, 34, 4, 256, "Gemma Terms of Use",
-            "Multilingual Gemma model (text only in this app).",
-            listOf("General", "Multilingual"), hf("ggml-org/gemma-3-4b-it-GGUF", "gemma-3-4b-it-Q4_K_M.gguf"),
-            "882e8d2db44dc554fb0ea5077cb7e4bc49e7342a1f0da57901c0802ea21a0863", "gemma-3-4b-it-Q4_K_M.gguf"),
+            "Multilingual Gemma model that can also look at photos (image encoder included in the download).",
+            listOf("General", "Multilingual", "Vision"), hf("ggml-org/gemma-3-4b-it-GGUF", "gemma-3-4b-it-Q4_K_M.gguf"),
+            "882e8d2db44dc554fb0ea5077cb7e4bc49e7342a1f0da57901c0802ea21a0863", "gemma-3-4b-it-Q4_K_M.gguf",
+            projectorUrl = hf("ggml-org/gemma-3-4b-it-GGUF", "mmproj-model-f16.gguf"),
+            projectorSha256 = "8c0fb064b019a6972856aaae2c7e4792858af3ca4561be2dbf649123ba6c40cb", projectorFile = "gemma-3-4b-mmproj-f16.gguf", projectorSize = 851_251_104),
         ModelSpec("qwen2.5-coder-7b", "Qwen2.5 Coder 7B Instruct", "Qwen2.5", 7.6, "Q4_K_M", 4_683_074_336, "qwen2", 32768, 28, 4, 128, "Apache-2.0",
             "Code-specialised. Needs a 12 GB phone.",
             listOf("Code"), hf("bartowski/Qwen2.5-Coder-7B-Instruct-GGUF", "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf"),
@@ -78,6 +88,25 @@ object Catalog {
             "Capable 8B generalist. Best on 16 GB phones.",
             listOf("General", "Large"), hf("bartowski/Meta-Llama-3.1-8B-Instruct-GGUF", "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"),
             "7b064f5842bf9532c91456deda288a1b672397a54fa729aa665952863033557c", "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"),
+        // Vision models: understand photos (camera or gallery). Text model + image encoder, both checksum-verified.
+        ModelSpec("smolvlm-500m", "SmolVLM 500M (vision)", "SmolVLM", 0.5, "Q8_0", 436_806_912, "llama", 8192, 32, 5, 64, "Apache-2.0",
+            "Small vision model: describes photos, reads short text and labels. Fits 4–6 GB phones. Answers are short and basic.",
+            listOf("Vision", "Lite"), hf("ggml-org/SmolVLM-500M-Instruct-GGUF", "SmolVLM-500M-Instruct-Q8_0.gguf"),
+            "9d4612de6a42214499e301494a3ecc2be0abdd9de44e663bda63f1152fad1bf4", "SmolVLM-500M-Instruct-Q8_0.gguf",
+            projectorUrl = hf("ggml-org/SmolVLM-500M-Instruct-GGUF", "mmproj-SmolVLM-500M-Instruct-Q8_0.gguf"),
+            projectorSha256 = "d1eb8b6b23979205fdf63703ed10f788131a3f812c7b1f72e0119d5d81295150", projectorFile = "mmproj-SmolVLM-500M-Instruct-Q8_0.gguf", projectorSize = 108_783_360),
+        ModelSpec("smolvlm2-2.2b", "SmolVLM2 2.2B (vision)", "SmolVLM", 2.2, "Q4_K_M", 1_112_602_656, "llama", 8192, 24, 32, 64, "Apache-2.0",
+            "Better image understanding and text reading. Best on 8 GB phones.",
+            listOf("Vision"), hf("ggml-org/SmolVLM2-2.2B-Instruct-GGUF", "SmolVLM2-2.2B-Instruct-Q4_K_M.gguf"),
+            "0cf76814555b8665149075b74ab6b5c1d428ea1d3d01c1918c12012e8d7c9f58", "SmolVLM2-2.2B-Instruct-Q4_K_M.gguf",
+            projectorUrl = hf("ggml-org/SmolVLM2-2.2B-Instruct-GGUF", "mmproj-SmolVLM2-2.2B-Instruct-Q8_0.gguf"),
+            projectorSha256 = "ae07ea1facd07dd3230c4483b63e8cda96c6944ad2481f33d531f79e892dd024", projectorFile = "mmproj-SmolVLM2-2.2B-Instruct-Q8_0.gguf", projectorSize = 592_523_200),
+        ModelSpec("qwen2.5-vl-3b", "Qwen2.5-VL 3B (vision)", "Qwen2.5", 3.75, "Q4_K_M", 1_929_901_056, "qwen2vl", 32768, 36, 2, 128, "Qwen Research License",
+            "Strong at reading documents, receipts and screenshots in photos. Needs a 12 GB phone.",
+            listOf("Vision", "Multilingual"), hf("ggml-org/Qwen2.5-VL-3B-Instruct-GGUF", "Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf"),
+            "d02fe9b69ad8cadbbd228e387667af66612c44bed29ffc8eb1e7caf9ac486c12", "Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf",
+            projectorUrl = hf("ggml-org/Qwen2.5-VL-3B-Instruct-GGUF", "mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf"),
+            projectorSha256 = "980c9b2f78c04e6cff93d277ada09e768394f112d75db3b4e9dea8a69f9fb904", projectorFile = "mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf", projectorSize = 844_757_728),
         // Embedding models for knowledge bases and agent memory. Each conversion was tested with the
         // native test harness (local-ai/android/native-test): some public conversions crash or rank badly.
         ModelSpec("e5-small", "multilingual-e5-small", "E5", 0.12, "Q8_0", 132_439_008, "bert", 512, 12, 12, 32, "MIT",
@@ -111,7 +140,7 @@ object MemoryModel {
         val bytesPerElem = if (kvQ8) 1.0625 else 2.0
         val kv = 2.0 * spec.layers * ctx * spec.kvHeads * spec.headDim * bytesPerElem / GIB
         val compute = (0.08 + spec.paramsB * 0.025) * (0.5 + 0.5 * batch / 512.0)
-        return MemoryEstimate(spec.sizeBytes / GIB, kv, compute, 0.12)
+        return MemoryEstimate(spec.totalBytes / GIB, kv, compute + if (spec.vision) 0.15 else 0.0, 0.12)
     }
 
     fun verdict(spec: ModelSpec, ctx: Int, kvQ8: Boolean, device: DeviceProfile, batch: Int = 512): Verdict {

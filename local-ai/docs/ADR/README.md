@@ -19,3 +19,4 @@ The blueprint was approved on 2026-11-17: ADRs 0001–0010 are **Accepted**. ADR
 | [0012](0012-milestone-2-4-implementation-choices.md) | Implementation choices for agents, knowledge, tools, memory and workflows (Accepted) |
 | [0013](0013-phone-access-and-daily-digest.md) | Folder sync, phone tools (dialer, SMS) and the daily digest (Accepted) |
 | [0014](0014-automatic-digest-email.md) | Opt-in automatic digest email through the user's own SMTP server (Accepted) |
+| [0015](0015-voice-vision-documents.md) | Voice, photos (vision models) and Document Studio on the phone (Accepted) |

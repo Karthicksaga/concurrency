@@ -102,6 +102,12 @@ There are no network tools, no shell, no package install, no intent-launching to
 | `READ_SMS` | Optional SMS Reader tool and daily digest; read-only, on-device (ADR-0013) | When the user enables the tool or "Include SMS" |
 | `READ_CONTACTS` | Optional: call a contact by name via the dialer tool | When the user taps "Allow contacts" |
 | `CALL_PHONE` | **Not requested**: the dialer opens with the number; the user presses Call | — |
+| `RECORD_AUDIO` | Voice dictation and voice conversation (ADR-0015); on-device recognizer preferred | First tap on a microphone |
+| `CAMERA` | **Not requested**: the camera app takes the photo and writes it to a FileProvider URI the app owns | — |
+
+### 6.1 Files shared with other apps
+
+Exports (`files/exports`) and camera captures (`cache/camera`) are the only paths in the FileProvider. Each share or open grants read access to one file, temporarily. Chat photos stay in `files/chat_images` and are deleted with their conversation or by "Erase everything".
 
 ## 7. User control
 

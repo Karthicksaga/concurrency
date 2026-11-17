@@ -38,8 +38,11 @@ object LlamaNative {
     external fun abort()
     external fun generate(
         roles: Array<String>, contents: Array<String>, maxTokens: Int, temp: Float, topP: Float, topK: Int,
-        minP: Float, repeatPenalty: Float, seed: Int, enableThinking: Boolean, grammar: String?, callback: Callback,
+        minP: Float, repeatPenalty: Float, seed: Int, enableThinking: Boolean, grammar: String?,
+        rgb: ByteArray?, imgW: Int, imgH: Int, callback: Callback,
     ): Int
+    /** 0 ok, -1 no model, -2 projector failed to load, -3 projector has no image support. */
+    external fun loadProjector(path: String, nThreads: Int): Int
     external fun schemaToGrammar(jsonSchema: String): String
     external fun loadEmbedder(path: String, nThreads: Int): Int
     external fun unloadEmbedder()
@@ -49,6 +52,9 @@ object LlamaNative {
 data class LoadConfig(val contextLength: Int, val threads: Int, val batch: Int, val kvQ8: Boolean)
 
 data class ChatTurn(val role: String, val content: String)
+
+/** An image as packed RGB bytes (width × height × 3), attached to the last user turn. */
+class RgbImage(val rgb: ByteArray, val width: Int, val height: Int)
 
 data class SamplingParams(
     val temperature: Float = 0.7f, val topP: Float = 0.9f, val topK: Int = 40, val minP: Float = 0.05f,
@@ -73,12 +79,13 @@ enum class InferenceError(val message: String) {
     CONTEXT_OVERFLOW("The conversation is longer than the model's context window."),
     TEMPLATE("This model's chat template could not be applied."),
     DECODE("The model failed while processing the prompt. Try a shorter context or another model."),
+    NO_VISION("This model can't see images. In Models, install and use a vision model such as SmolVLM 500M (vision)."),
 }
 
 sealed interface EngineState {
     data object Idle : EngineState
     data class Loading(val modelId: String) : EngineState
-    data class Ready(val modelId: String, val description: String, val contextLength: Int, val config: LoadConfig) : EngineState
+    data class Ready(val modelId: String, val description: String, val contextLength: Int, val config: LoadConfig, val vision: Boolean = false) : EngineState
     data class Failed(val modelId: String, val message: String) : EngineState
 }
 
@@ -128,6 +135,18 @@ class LlamaEngine @Inject constructor(@ApplicationContext private val context: C
         }
     }
 
+    /** Loads the image encoder for the model that is loaded now. */
+    suspend fun loadProjector(file: File, threads: Int): Result<Unit> = mutex.withLock {
+        val ready = _state.value as? EngineState.Ready ?: return@withLock Result.failure(IllegalStateException("No model is loaded."))
+        withContext(dispatcher) {
+            when (LlamaNative.loadProjector(file.absolutePath, threads)) {
+                0 -> { _state.value = ready.copy(vision = true); Result.success(Unit) }
+                -3 -> Result.failure(IllegalStateException("This image encoder has no image support."))
+                else -> Result.failure(IllegalStateException("The image encoder could not be loaded."))
+            }
+        }
+    }
+
     suspend fun unload() = mutex.withLock {
         withContext(dispatcher) { if (initialised) LlamaNative.unload() }
         _state.value = EngineState.Idle
@@ -137,9 +156,11 @@ class LlamaEngine @Inject constructor(@ApplicationContext private val context: C
 
     /** Cold flow: collecting starts generation; cancelling the collector aborts native decoding. */
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun generate(turns: List<ChatTurn>, params: SamplingParams, grammar: String? = null): Flow<GenEvent> = channelFlow {
+    fun generate(turns: List<ChatTurn>, params: SamplingParams, grammar: String? = null, image: RgbImage? = null): Flow<GenEvent> = channelFlow {
         mutex.withLock {
-            if (_state.value !is EngineState.Ready) { send(GenEvent.Failed(InferenceError.NO_MODEL)); return@withLock }
+            val st = _state.value
+            if (st !is EngineState.Ready) { send(GenEvent.Failed(InferenceError.NO_MODEL)); return@withLock }
+            if (image != null && !st.vision) { send(GenEvent.Failed(InferenceError.NO_VISION)); return@withLock }
             val finished = CompletableDeferred<Unit>()
             val watcher = launch {
                 try { awaitCancellation() } finally { if (!finished.isCompleted) LlamaNative.abort() }
@@ -151,7 +172,7 @@ class LlamaEngine @Inject constructor(@ApplicationContext private val context: C
                     LlamaNative.generate(
                         turns.map { it.role }.toTypedArray(), turns.map { it.content }.toTypedArray(),
                         params.maxTokens, params.temperature, params.topP, params.topK, params.minP, params.repeatPenalty,
-                        params.seed, params.enableThinking, grammar,
+                        params.seed, params.enableThinking, grammar, image?.rgb, image?.width ?: 0, image?.height ?: 0,
                         object : LlamaNative.Callback {
                             override fun onToken(utf8: ByteArray) { trySendBlocking(GenEvent.Delta(String(utf8, Charsets.UTF_8))) }
                             override fun onDone(promptTokens: Int, reusedTokens: Int, generatedTokens: Int, promptMs: Long, genMs: Long) {

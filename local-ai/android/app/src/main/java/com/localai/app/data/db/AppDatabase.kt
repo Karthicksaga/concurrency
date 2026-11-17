@@ -67,6 +67,7 @@ data class MessageEntity(
     val sourcesJson: String? = null,
     val toolsJson: String? = null,
     val runId: String? = null,
+    val imagePath: String? = null,     // photo attached to a user message (app-private file)
 )
 
 @Dao
@@ -360,9 +361,9 @@ interface RunDao {
     entities = [InstalledModelEntity::class, ConversationEntity::class, MessageEntity::class,
         AgentEntity::class, KnowledgeBaseEntity::class, DocumentEntity::class, ChunkEntity::class, ChunkFts::class,
         MemoryEntity::class, NoteEntity::class, ToolCallEntity::class, RunEntity::class, RunStepEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4)],
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun models(): ModelDao

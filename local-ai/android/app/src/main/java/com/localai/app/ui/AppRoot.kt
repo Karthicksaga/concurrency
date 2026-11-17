@@ -33,6 +33,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.localai.app.core.designsystem.La
@@ -110,7 +111,9 @@ fun AppRoot(openChat: kotlinx.coroutines.flow.MutableStateFlow<String?>, vm: Roo
                     composable("onboarding") { OnboardingScreen(onDone = { nav.navigate("home") { popUpTo("onboarding") { inclusive = true } } }) }
                     composable("home") { HomeScreen(nav) }
                     composable("chats") { ChatListScreen(nav) }
-                    composable("chat/{id}") { ChatScreen(nav) }
+                    composable("chat/{id}?attach={attach}", arguments = listOf(navArgument("attach") { defaultValue = "0" })) { ChatScreen(nav) }
+                    composable("voice/{id}") { com.localai.app.feature.voice.VoiceScreen(nav) }
+                    composable("studio") { com.localai.app.feature.studio.StudioScreen(nav) }
                     composable("models") { ModelsScreen(nav) }
                     composable("model/{id}") { ModelDetailScreen(nav) }
                     composable("settings") { SettingsScreen(nav) }

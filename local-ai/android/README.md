@@ -1,6 +1,6 @@
 # LOCAL AI — Android app
 
-Native Kotlin + Jetpack Compose app that runs GGUF language models **on the phone** with llama.cpp: model manager, chat, Agent Studio, tools, agent memory, knowledge bases with local search (RAG) and supervisor multi-agent workflows, plus **Lite mode** for 4 GB and 6 GB phones. Implementation notes: `../docs/ADR/0012-milestone-2-4-implementation-choices.md`.
+Native Kotlin + Jetpack Compose app that runs GGUF language models **on the phone** with llama.cpp: model manager, chat, Agent Studio, tools, agent memory, knowledge bases with local search (RAG) and supervisor multi-agent workflows, plus **Lite mode** for 4 GB and 6 GB phones. Implementation notes: `../docs/ADR/0012-milestone-2-4-implementation-choices.md`; voice, photos and documents: `../docs/ADR/0015-voice-vision-documents.md`.
 
 ## Install on your phone
 
@@ -18,7 +18,7 @@ The APK is signed with a **public test key** committed in `app/debug-release.key
 |---|---|
 | On-device inference (llama.cpp b12100, CPU, all ARM variants selected at runtime) | ✅ |
 | Device check, tiers (4 / 6 / 8 / 12 / 16 GB) and **Lite mode** (auto / on / off) | ✅ |
-| Curated catalog of 11 GGUF models (0.6B–8B) with memory estimate and "Runs well / Tight fit / Not recommended" verdict | ✅ |
+| Curated catalog of 14 GGUF chat/vision models (0.6B–8B) with memory estimate and "Runs well / Tight fit / Not recommended" verdict | ✅ |
 | Resumable downloads (pause / resume / cancel), SHA-256 verification, Wi-Fi-only option, progress notification | ✅ |
 | Import your own `.gguf` (header validated, metadata read for the memory estimate) | ✅ |
 | Per-model context length, temperature, top-p | ✅ |
@@ -36,7 +36,10 @@ The APK is signed with a **public test key** committed in `app/debug-release.key
 | **Phone tools:** Phone Dialer (opens the dialer, you press Call; contacts by name optional), SMS Reader (read-only, off by default) | ✅ |
 | **Daily digest:** at your chosen time, an on-device summary of SMS, documents, notes and workflows → notification + saved chat + Email button (opens your email app pre-filled) | ✅ |
 | **Automatic digest email (opt-in):** sends through your own mail server (Gmail/Outlook/Yahoo/Zoho/custom) with an app password stored in the Android Keystore; test email; falls back to the Email button | ✅ |
-| OCR for scanned PDFs, isolated parser process, GPU/NPU, Gmail sign-in (OAuth) | ⏳ Later |
+| **Photos:** take a photo or pick one in chat ("Ask a photo" on Home) and ask about it; vision models SmolVLM 500M (4–6 GB phones), SmolVLM2 2.2B, Qwen2.5-VL 3B, Gemma 3 4B; image encoder downloaded and verified with the model | ✅ |
+| **Voice:** dictate in chat, read any answer aloud, hands-free voice conversation (listen → answer → speak while writing → listen; tap to interrupt); voice language and speed; on-device speech recognizer when the phone has one | ✅ |
+| **Document Studio:** write reports, letters, emails, minutes, resumes, essays and proposals with AI → PDF or Word; convert Word → PDF, PDF → Word, Markdown/text → either, optionally fixing, summarizing, translating, formalizing or simplifying with AI; save any chat answer as PDF/Word; open, share or save to phone | ✅ |
+| OCR for scanned PDFs, images inside Word files, whisper.cpp speech, isolated parser process, GPU/NPU, Gmail sign-in (OAuth) | ⏳ Later |
 
 ## Lite mode
 
@@ -44,8 +47,8 @@ Turned on automatically for phones that report less than ~6.6 GiB of RAM. It use
 
 | Phone | Recommended models |
 |---|---|
-| 4 GB | Llama 3.2 1B, Qwen3 0.6B, Gemma 3 1B |
-| 6 GB | Qwen3 1.7B, SmolLM2 1.7B (Llama 3.2 3B is a tight fit) |
+| 4 GB | Llama 3.2 1B, Qwen3 0.6B, Gemma 3 1B; photos: SmolVLM 500M |
+| 6 GB | Qwen3 1.7B, SmolLM2 1.7B (Llama 3.2 3B is a tight fit); photos: SmolVLM 500M |
 | 8 GB | Llama 3.2 3B (4B models are a tight fit) |
 | 12 GB+ | Qwen3 4B, Phi-4-mini, Gemma 3 4B; 7–8B as a tight fit |
 
@@ -64,7 +67,8 @@ The first native build compiles llama.cpp for every ARM CPU variant and takes 15
 ## Tests
 
 ```bash
-./gradlew testReleaseUnitTest          # JVM (13 tests): tiers, lite policy, verdicts, GGUF reader, calculator, chunker, sources, templates
+./gradlew testReleaseUnitTest          # JVM (27 tests): tiers, lite policy, verdicts, GGUF reader, calculator, chunker, sources, templates, email,
+                                       #   Markdown/Word round trip, document chunking, speech sentence streaming, photo scope, image packing
 native-test/run.sh [model.gguf] [embedder.gguf ...]   # host build of la_jni.cpp + llama.cpp driven through JNI with real models
 ```
 
@@ -74,6 +78,9 @@ control tokens in user text treated as plain text, intact multi-byte UTF-8, NO_M
 
 Also verified on host (2026-11-17): grammar-constrained JSON (tool decision picks the calculator for arithmetic; planner emits a valid task list),
 and both embedding models (relevant passage ranks first; multilingual e5 matches a German query to an English passage).
+
+Vision verified on host (2026-11-17): SmolVLM 500M Q8_0 + image encoder described a photo of a newspaper front page correctly
+(152 prompt tokens including the image); a text turn after an image turn works; malformed image buffers are rejected.
 
 Not yet tested on a physical phone: the UI and on-device speed. Please report what you see (model, phone, tok/s on the Performance screen).
 

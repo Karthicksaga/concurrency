@@ -101,6 +101,7 @@ dependencies {
     implementation(libs.coroutines.android)
     implementation(libs.pdfbox.android)
     implementation(libs.androidx.documentfile)
+    implementation(libs.androidx.exifinterface)
     implementation(libs.android.mail)
     implementation(libs.android.activation)
     testImplementation(libs.junit)

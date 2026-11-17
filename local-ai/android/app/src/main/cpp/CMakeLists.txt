@@ -11,6 +11,7 @@ set(LLAMA_BUILD_TOOLS    OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_SERVER   OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_APP      OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_MTMD     ON  CACHE BOOL "" FORCE)   # image understanding (vision models)
 set(LLAMA_OPENSSL        OFF CACHE BOOL "" FORCE)
 set(LLAMA_SUBPROCESS     OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS    ON  CACHE BOOL "" FORCE)
@@ -31,7 +32,8 @@ add_library(localai SHARED la_jni.cpp)
 target_include_directories(localai PRIVATE
         llama.cpp/include
         llama.cpp/common
-        llama.cpp/ggml/include)
-target_link_libraries(localai llama llama-common ggml android log)
+        llama.cpp/ggml/include
+        llama.cpp/tools/mtmd)
+target_link_libraries(localai llama llama-common mtmd ggml android log)
 # 16 KB page-size compatibility (Android 15+ devices)
 target_link_options(localai PRIVATE "-Wl,-z,max-page-size=16384")

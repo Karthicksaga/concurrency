@@ -22,6 +22,41 @@ import com.localai.app.data.db.AgentEntity
 import com.localai.app.data.db.KnowledgeDao
 import com.localai.app.data.knowledge.SourceRef
 import com.localai.app.data.workflow.WorkflowService
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.material.icons.automirrored.outlined.VolumeUp
+import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.GraphicEq
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Mic
+import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.StopCircle
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import com.localai.app.data.chat.DEFAULT_PHOTO_PROMPT
+import com.localai.app.data.documents.DocFormat
+import com.localai.app.data.documents.DocumentStudio
+import com.localai.app.data.media.Images
+import com.localai.app.data.voice.HeardEvent
+import com.localai.app.data.voice.Speakable
+import com.localai.app.data.voice.SpeechInput
+import com.localai.app.data.voice.SpeechOutput
+import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.File
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -162,8 +197,23 @@ class ChatViewModel @Inject constructor(
     kdao: KnowledgeDao,
     agentRepo: AgentRepository,
     workflows: WorkflowService,
+    @ApplicationContext private val context: Context,
+    private val studio: DocumentStudio,
+    private val speechIn: SpeechInput,
+    private val speechOut: SpeechOutput,
+    private val settingsRepo: SettingsRepository,
 ) : ViewModel() {
     val id: String = checkNotNull(savedState["id"])
+    /** Opened from "Ask a photo": show the attach menu straight away. */
+    val autoAttach: Boolean = savedState.get<String>("attach") == "1"
+    var pendingImage by mutableStateOf<String?>(null); private set
+    var importingImage by mutableStateOf(false); private set
+    var dictating by mutableStateOf(false); private set
+    var dictationLevel by mutableStateOf(0f); private set
+    var exported by mutableStateOf<File?>(null)
+    val speakingId = speechOut.speakingId
+    val voiceAvailable get() = speechIn.available
+    private var cameraFile: File? = null
     val messages = dao.observeMessages(id).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val conversation = dao.observeConversation(id).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     val live = chat.live
@@ -179,8 +229,51 @@ class ChatViewModel @Inject constructor(
     val workflowHistory = workflows.history.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     var notice by mutableStateOf<String?>(null)
 
-    fun send(text: String) = chat.send(id, text)
+    fun send(text: String) { chat.send(id, text, pendingImage); pendingImage = null }
     fun stop() = chat.stop()
+
+    // ---- photos ----
+    fun cameraUri(): Uri = Images.cameraTarget(context).let { (f, u) -> cameraFile = f; u }
+    fun attach(uri: Uri) = viewModelScope.launch {
+        importingImage = true
+        runCatching { Images.import(context, uri) }
+            .onSuccess { pendingImage?.let { old -> File(old).delete() }; pendingImage = it.path }
+            .onFailure { notice = it.message ?: "Could not read that image." }
+        cameraFile?.delete(); cameraFile = null
+        importingImage = false
+    }
+    fun removeImage() { pendingImage?.let { File(it).delete() }; pendingImage = null }
+
+    // ---- voice ----
+    /** Dictation into the composer: partial results stream into [onText]. */
+    fun dictate(onText: (String, Boolean) -> Unit) = viewModelScope.launch {
+        if (dictating) { speechIn.stop(); return@launch }
+        speechOut.stop()
+        dictating = true
+        speechIn.listen(settingsRepo.current().voiceLanguage) { e ->
+            when (e) {
+                is HeardEvent.Partial -> onText(e.text, false)
+                is HeardEvent.Final -> { onText(e.text, true); dictating = false; dictationLevel = 0f }
+                is HeardEvent.Level -> dictationLevel = e.rms
+                is HeardEvent.Error -> { dictating = false; dictationLevel = 0f; if (!e.noSpeech) notice = e.message }
+                HeardEvent.Ready -> Unit
+            }
+        }
+    }
+    fun speak(messageId: String, text: String) = viewModelScope.launch {
+        if (speakingId.value == messageId) { speechOut.stop(); return@launch }
+        speechOut.stop()
+        val s = settingsRepo.current()
+        if (!speechOut.enqueue(Speakable.clean(text), s.voiceLanguage, s.speechRate, messageId)) notice = "No text-to-speech engine is installed. Install one from Android settings › Text-to-speech."
+    }
+
+    // ---- documents ----
+    fun saveAs(text: String, format: DocFormat) = viewModelScope.launch {
+        runCatching { studio.exportMarkdown(text, format, conversation.value?.title ?: "Chat answer") }
+            .onSuccess { exported = it }.onFailure { notice = "Could not create the ${format.label} file: ${it.message}" }
+    }
+    fun openExport(f: File) { if (!studio.open(f)) notice = "No app on this phone opens ${f.extension.uppercase()} files. Use Share instead." }
+    fun shareExport(f: File) = context.startActivity(studio.shareIntent(f))
     fun regenerate() = chat.regenerate(id)
     fun answerTool(allow: Boolean) = chat.answerTool(allow)
     fun switchModel(modelId: String) = viewModelScope.launch { models.activate(modelId).onFailure { notice = it.message } }
@@ -202,7 +295,7 @@ class ChatViewModel @Inject constructor(
     }
     fun delete(onDone: () -> Unit) = viewModelScope.launch { chat.delete(id); onDone() }
     // Leaving a chat without sending anything should not leave an empty "New chat" behind.
-    override fun onCleared() { chat.discardIfEmpty(id) }
+    override fun onCleared() { chat.discardIfEmpty(id); speechIn.cancel(); speechOut.stop(); pendingImage?.let { File(it).delete() } }
 }
 
 @Composable
@@ -220,7 +313,27 @@ fun ChatScreen(nav: NavController, vm: ChatViewModel = hiltViewModel()) {
     val wfLive by vm.workflowLive.collectAsStateWithLifecycle()
     val wfHistory by vm.workflowHistory.collectAsStateWithLifecycle()
     val clipboard = LocalClipboardManager.current
+    val ctx = LocalContext.current
     var input by rememberSaveable { mutableStateOf("") }
+    var attachMenu by remember { mutableStateOf(vm.autoAttach) }
+    val speakingId by vm.speakingId.collectAsStateWithLifecycle()
+    val gallery = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let { vm.attach(it) } }
+    var cameraUri by remember { mutableStateOf<Uri?>(null) }
+    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) cameraUri?.let { vm.attach(it) } }
+    val takePhoto = { runCatching { camera.launch(vm.cameraUri().also { cameraUri = it }) }.onFailure { vm.notice = "No camera app is available." }; Unit }
+    val pickPhoto = { gallery.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+    val dictationBase = remember { mutableStateOf("") }
+    val startDictation = {
+        dictationBase.value = input
+        vm.dictate { text, _ -> input = (dictationBase.value.trimEnd() + " " + text).trim() }; Unit
+    }
+    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) startDictation() else vm.notice = "Allow the microphone to dictate messages."
+    }
+    val onMic = {
+        if (vm.dictating || ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startDictation()
+        else micPermission.launch(Manifest.permission.RECORD_AUDIO)
+    }
     var showOptions by remember { mutableStateOf(false) }
     var showModels by remember { mutableStateOf(false) }
     var showKbs by remember { mutableStateOf(false) }
@@ -239,6 +352,12 @@ fun ChatScreen(nav: NavController, vm: ChatViewModel = hiltViewModel()) {
         is EngineState.Ready -> "ready · ${e.contextLength / 1024}K context"
         is EngineState.Loading -> "loading…"; is EngineState.Failed -> "failed to load"; EngineState.Idle -> "loads on first message"
     }
+    // "Read replies aloud" (Settings › Voice): speak answers that arrive while this chat is open.
+    val openedAt = remember { System.currentTimeMillis() }
+    LaunchedEffect(messages.lastOrNull()?.id) {
+        val last = messages.lastOrNull() ?: return@LaunchedEffect
+        if (settings?.readAloud == true && last.role == "assistant" && last.status == "COMPLETE" && last.createdAt >= openedAt) vm.speak(last.id, last.content)
+    }
     LaunchedEffect(messages.size, myLive?.text?.length) {
         val n = messages.size + (if (myLive != null || runningRun != null) 1 else 0)
         if (n > 0) listState.animateScrollToItem(n - 1, scrollOffset = Int.MAX_VALUE / 4)
@@ -252,6 +371,7 @@ fun ChatScreen(nav: NavController, vm: ChatViewModel = hiltViewModel()) {
                 Text(c?.title ?: "Chat", style = MaterialTheme.typography.titleMedium, maxLines = 1)
                 Text("$modelName · $engLabel", color = La.colors.text3, fontSize = 12.sp, maxLines = 1)
             }
+            IconButton(onClick = { nav.navigate("voice/${vm.id}") }) { Icon(Icons.Outlined.GraphicEq, "Voice conversation", tint = La.colors.text2) }
             IconButton(onClick = { showModels = true }) { Icon(Icons.Outlined.Memory, "Choose model", tint = La.colors.text2) }
             IconButton(onClick = { showOptions = true }) { Icon(Icons.Outlined.Tune, "Conversation options", tint = La.colors.text2) }
         }
@@ -279,7 +399,7 @@ fun ChatScreen(nav: NavController, vm: ChatViewModel = hiltViewModel()) {
                 }
             }
             items(messages, key = { it.id }) { m ->
-                if (m.role == "user") UserBubble(m.content)
+                if (m.role == "user") UserBubble(m.content, m.imagePath)
                 else Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(if (m.runId != null) "Supervisor workflow" else agent?.name ?: installed.firstOrNull { it.id == m.modelId }?.name ?: m.modelId ?: "Assistant", fontSize = 12.sp, color = La.colors.text3)
                     toolsFromJson(m.toolsJson).forEach { t -> ToolTraceRow(t) }
@@ -292,6 +412,19 @@ fun ChatScreen(nav: NavController, vm: ChatViewModel = hiltViewModel()) {
                     m.runId?.let { r -> TextButton(onClick = { nav.navigate("workflow/$r") }) { Icon(Icons.Outlined.AccountTree, null, Modifier.size(16.dp)); Text("  Open workflow") } }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { clipboard.setText(AnnotatedString(m.content)) }, Modifier.size(34.dp)) { Icon(Icons.Outlined.ContentCopy, "Copy", Modifier.size(17.dp), tint = La.colors.text3) }
+                        if (m.status != "ERROR") {
+                            IconButton(onClick = { vm.speak(m.id, m.content) }, Modifier.size(34.dp)) {
+                                Icon(if (speakingId == m.id) Icons.Outlined.StopCircle else Icons.AutoMirrored.Outlined.VolumeUp, if (speakingId == m.id) "Stop reading" else "Read aloud", Modifier.size(18.dp), tint = if (speakingId == m.id) La.colors.accent else La.colors.text3)
+                            }
+                            Box {
+                                var saveMenu by remember { mutableStateOf(false) }
+                                IconButton(onClick = { saveMenu = true }, Modifier.size(34.dp)) { Icon(Icons.Outlined.Description, "Save as document", Modifier.size(17.dp), tint = La.colors.text3) }
+                                DropdownMenu(saveMenu, { saveMenu = false }) {
+                                    DropdownMenuItem({ Text("Save as PDF") }, { saveMenu = false; vm.saveAs(m.content, DocFormat.PDF) })
+                                    DropdownMenuItem({ Text("Save as Word (.docx)") }, { saveMenu = false; vm.saveAs(m.content, DocFormat.DOCX) })
+                                }
+                            }
+                        }
                         if (m == messages.last() && !busy) IconButton(onClick = { vm.regenerate() }, Modifier.size(34.dp)) { Icon(Icons.Outlined.Refresh, "Regenerate", Modifier.size(17.dp), tint = La.colors.text3) }
                         m.genTps?.let { Text("%.1f tok/s".format(it) + (m.tokens?.let { t -> " · $t tokens" } ?: ""), fontSize = 11.sp, color = La.colors.text3, modifier = Modifier.padding(start = 6.dp)) }
                     }
@@ -323,11 +456,32 @@ fun ChatScreen(nav: NavController, vm: ChatViewModel = hiltViewModel()) {
             FilterChip(c?.agentId != null, { showAgents = true }, { Text(when { supervisor -> "Agent mode: Supervisor"; agent != null -> agent.name; else -> "Agent mode off" }, maxLines = 1) },
                 leadingIcon = { Icon(Icons.Outlined.SmartToy, null, Modifier.size(16.dp)) })
         }
+        vm.pendingImage?.let { path -> PendingPhoto(path, onRemove = { vm.removeImage() }) }
+        if (vm.importingImage) LinearProgressIndicator(Modifier.fillMaxWidth())
         Composer(input, onInput = { input = it }, busy = busy, enabled = activeId != null,
-            onSend = { if (input.isNotBlank()) { vm.send(input); input = "" } }, onStop = { if (runningRun != null) nav.navigate("workflow/${runningRun.id}") else vm.stop() },
-            footer = stats?.let { "Last reply %.1f tok/s · prompt %.0f tok/s".format(it.genTps, it.promptTps) })
+            canSendEmpty = vm.pendingImage != null,
+            onSend = { if (input.isNotBlank() || vm.pendingImage != null) { vm.send(input); input = "" } }, onStop = { if (runningRun != null) nav.navigate("workflow/${runningRun.id}") else vm.stop() },
+            footer = if (vm.dictating) "Listening… tap the mic to finish" else stats?.let { "Last reply %.1f tok/s · prompt %.0f tok/s".format(it.genTps, it.promptTps) },
+            attach = {
+                Box {
+                    IconButton(onClick = { attachMenu = true }, enabled = activeId != null && !busy, modifier = Modifier.padding(4.dp).size(44.dp)) {
+                        Icon(Icons.Outlined.AddPhotoAlternate, "Attach a photo", tint = La.colors.text2)
+                    }
+                    DropdownMenu(attachMenu, { attachMenu = false }) {
+                        DropdownMenuItem({ Text("Take a photo") }, { attachMenu = false; takePhoto() }, leadingIcon = { Icon(Icons.Outlined.PhotoCamera, null) })
+                        DropdownMenuItem({ Text("Choose from gallery") }, { attachMenu = false; pickPhoto() }, leadingIcon = { Icon(Icons.Outlined.Image, null) })
+                    }
+                }
+            },
+            mic = if (vm.voiceAvailable) ({ onMic() }) else null, dictating = vm.dictating, level = vm.dictationLevel)
     }
 
+    vm.exported?.let { f ->
+        AlertDialog(onDismissRequest = { vm.exported = null }, title = { Text("Saved ${f.extension.uppercase()}") },
+            text = { Text("${f.name}\nFind it any time in Documents › Files.", fontSize = 13.sp) },
+            confirmButton = { TextButton(onClick = { vm.openExport(f); vm.exported = null }) { Text("Open") } },
+            dismissButton = { TextButton(onClick = { vm.shareExport(f); vm.exported = null }) { Text("Share") } })
+    }
     toolReq?.takeIf { it.conversationId == vm.id }?.let { r ->
         AlertDialog(onDismissRequest = { vm.answerTool(false) }, title = { Text("Allow ${r.tool.name}?") },
             text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -423,24 +577,61 @@ private fun ToolTraceRow(t: ToolTrace) {
 }
 
 @Composable
-private fun UserBubble(text: String) {
-    Row(Modifier.fillMaxWidth()) {
-        Spacer(Modifier.weight(1f))
-        Text(text, modifier = Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(18.dp, 18.dp, 6.dp, 18.dp)).background(La.colors.accentSoft).padding(horizontal = 14.dp, vertical = 10.dp), fontSize = 15.sp)
+private fun UserBubble(text: String, imagePath: String?) {
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (imagePath != null) {
+            val bmp = rememberThumbnail(imagePath)
+            Box(Modifier.widthIn(max = 240.dp).clip(RoundedCornerShape(16.dp)).background(La.colors.surface2)) {
+                if (bmp != null) Image(bmp, "Attached photo", Modifier.widthIn(max = 240.dp), contentScale = ContentScale.Fit)
+                else Text("Photo", Modifier.padding(24.dp), color = La.colors.text3)
+            }
+        }
+        if (imagePath == null || text != DEFAULT_PHOTO_PROMPT)
+            Text(text, modifier = Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(18.dp, 18.dp, 6.dp, 18.dp)).background(La.colors.accentSoft).padding(horizontal = 14.dp, vertical = 10.dp), fontSize = 15.sp)
     }
 }
 
 @Composable
-private fun Composer(value: String, onInput: (String) -> Unit, busy: Boolean, enabled: Boolean, onSend: () -> Unit, onStop: () -> Unit, footer: String?) {
+private fun rememberThumbnail(path: String, max: Int = 600): ImageBitmap? =
+    produceState<ImageBitmap?>(null, path) { value = Images.thumbnail(File(path), max)?.asImageBitmap() }.value
+
+@Composable
+private fun PendingPhoto(path: String, onRemove: () -> Unit) {
+    Row(Modifier.fillMaxWidth().background(La.colors.surface1).padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        val bmp = rememberThumbnail(path, 200)
+        Box(Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)).background(La.colors.surface3)) {
+            if (bmp != null) Image(bmp, "Photo to send", Modifier.size(56.dp), contentScale = ContentScale.Crop)
+        }
+        Column(Modifier.weight(1f).padding(start = 10.dp)) {
+            Text("Photo attached", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text("Ask about it, or just send. Needs a vision model.", fontSize = 11.5.sp, color = La.colors.text3)
+        }
+        IconButton(onClick = onRemove) { Icon(Icons.Outlined.Close, "Remove photo", tint = La.colors.text2) }
+    }
+}
+
+@Composable
+private fun Composer(
+    value: String, onInput: (String) -> Unit, busy: Boolean, enabled: Boolean, onSend: () -> Unit, onStop: () -> Unit, footer: String?,
+    canSendEmpty: Boolean = false, attach: (@Composable () -> Unit)? = null, mic: (() -> Unit)? = null, dictating: Boolean = false, level: Float = 0f,
+) {
     Column(Modifier.fillMaxWidth().background(La.colors.surface1).navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
         Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(La.colors.surface2).border(1.dp, La.colors.line, RoundedCornerShape(24.dp)).padding(4.dp),
             verticalAlignment = Alignment.Bottom) {
+            attach?.invoke()
             TextField(value, onInput, modifier = Modifier.weight(1f), placeholder = { Text("Message") }, maxLines = 6, enabled = enabled,
                 colors = TextFieldDefaults.colors(focusedContainerColor = La.colors.surface2, unfocusedContainerColor = La.colors.surface2, disabledContainerColor = La.colors.surface2,
                     focusedIndicatorColor = La.colors.surface2, unfocusedIndicatorColor = La.colors.surface2, disabledIndicatorColor = La.colors.surface2))
+            if (mic != null && !busy && (value.isBlank() || dictating)) {
+                IconButton(onClick = mic, enabled = enabled, modifier = Modifier.padding(4.dp).size(44.dp).clip(CircleShape)
+                    .background(if (dictating) La.colors.accent.copy(alpha = 0.25f + 0.6f * level) else La.colors.surface3)) {
+                    Icon(Icons.Outlined.Mic, if (dictating) "Stop dictation" else "Dictate", tint = if (dictating) La.colors.onAccent else La.colors.text2)
+                }
+            }
+            val sendable = enabled && (value.isNotBlank() || canSendEmpty)
             val bg = if (busy) La.colors.text else La.colors.accent
-            IconButton(onClick = if (busy) onStop else onSend, enabled = busy || (enabled && value.isNotBlank()),
-                modifier = Modifier.padding(4.dp).size(44.dp).clip(CircleShape).background(if (busy || (enabled && value.isNotBlank())) bg else La.colors.surface4)) {
+            IconButton(onClick = if (busy) onStop else onSend, enabled = busy || sendable,
+                modifier = Modifier.padding(4.dp).size(44.dp).clip(CircleShape).background(if (busy || sendable) bg else La.colors.surface4)) {
                 Icon(if (busy) Icons.Outlined.Stop else Icons.AutoMirrored.Outlined.Send, if (busy) "Stop generating" else "Send", tint = if (busy) La.colors.bg else La.colors.onAccent)
             }
         }

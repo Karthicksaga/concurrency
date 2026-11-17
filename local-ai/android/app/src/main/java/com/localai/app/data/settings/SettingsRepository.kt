@@ -42,6 +42,9 @@ data class AppSettings(
     val digestEmail: String = "",
     val digestIncludeSms: Boolean = true,
     val folderSync: Boolean = true,
+    val voiceLanguage: String = "",       // BCP-47 tag, "" = phone language
+    val speechRate: Float = 1.0f,
+    val readAloud: Boolean = false,       // speak every reply in normal chat
 )
 
 data class ModelProfile(val contextLength: Int, val temperature: Float, val topP: Float)
@@ -81,6 +84,9 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         val digestEmail = stringPreferencesKey("digest_email")
         val digestSms = booleanPreferencesKey("digest_sms")
         val folderSync = booleanPreferencesKey("folder_sync")
+        val voiceLang = stringPreferencesKey("voice_lang")
+        val speechRate = floatPreferencesKey("speech_rate")
+        val readAloud = booleanPreferencesKey("read_aloud")
         fun ctx(id: String) = intPreferencesKey("ctx_$id")
         fun temp(id: String) = floatPreferencesKey("temp_$id")
         fun topP(id: String) = floatPreferencesKey("topp_$id")
@@ -103,6 +109,9 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
             digestEmail = p[K.digestEmail] ?: "",
             digestIncludeSms = p[K.digestSms] ?: true,
             folderSync = p[K.folderSync] ?: true,
+            voiceLanguage = p[K.voiceLang] ?: "",
+            speechRate = p[K.speechRate] ?: 1.0f,
+            readAloud = p[K.readAloud] ?: false,
         )
     }
 
@@ -122,6 +131,9 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         it[K.digestOn] = on; it[K.digestHour] = hour; it[K.digestMinute] = minute; it[K.digestEmail] = email.trim(); it[K.digestSms] = sms
     }
     suspend fun setFolderSync(v: Boolean) = edit { it[K.folderSync] = v }
+    suspend fun setVoice(language: String, rate: Float, readAloud: Boolean) = edit {
+        it[K.voiceLang] = language; it[K.speechRate] = rate.coerceIn(0.5f, 2f); it[K.readAloud] = readAloud
+    }
 
     fun profile(id: String, defaultCtx: Int): Flow<ModelProfile> = context.dataStore.data.map { p -> readProfile(p, id, defaultCtx) }
     suspend fun profileNow(id: String, defaultCtx: Int) = readProfile(context.dataStore.data.first(), id, defaultCtx)

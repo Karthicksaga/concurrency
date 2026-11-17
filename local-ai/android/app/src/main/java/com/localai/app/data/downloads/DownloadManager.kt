@@ -30,7 +30,6 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
@@ -59,12 +58,18 @@ class DownloadManager @Inject constructor(
 ) {
     private val wm get() = WorkManager.getInstance(context)
 
+    /** Bytes on disk so far for the model file plus its image encoder (if any). */
+    private fun doneBytes(spec: ModelSpec): Long {
+        fun one(name: String, size: Long) = if (models.fileFor(name).exists()) size else models.partFileFor(name).length()
+        return one(spec.fileName, spec.sizeBytes) + (spec.projectorFile?.let { one(it, spec.projectorSize) } ?: 0)
+    }
+
     val downloads: Flow<Map<String, DownloadUi>> = wm.getWorkInfosByTagFlow(TAG).map { infos ->
         val out = HashMap<String, DownloadUi>()
         // Paused = a partial file without running work.
         Catalog.models.forEach { spec ->
-            val part = models.partFileFor(spec.fileName)
-            if (part.exists()) out[spec.id] = DownloadUi(spec.id, DownloadPhase.PAUSED, part.length(), spec.sizeBytes, 0, null)
+            val partial = models.partFileFor(spec.fileName).exists() || spec.projectorFile?.let { models.partFileFor(it).exists() } == true
+            if (partial) out[spec.id] = DownloadUi(spec.id, DownloadPhase.PAUSED, doneBytes(spec), spec.totalBytes, 0, null)
         }
         infos.forEach { wi ->
             val id = wi.tags.firstOrNull { it.startsWith("model:") }?.removePrefix("model:") ?: return@forEach
@@ -72,12 +77,12 @@ class DownloadManager @Inject constructor(
             val p = wi.progress
             when (wi.state) {
                 WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED ->
-                    out[id] = DownloadUi(id, DownloadPhase.QUEUED, models.partFileFor(spec.fileName).length(), spec.sizeBytes, 0, null)
+                    out[id] = DownloadUi(id, DownloadPhase.QUEUED, doneBytes(spec), spec.totalBytes, 0, null)
                 WorkInfo.State.RUNNING -> out[id] = DownloadUi(id,
                     if (p.getBoolean("verifying", false)) DownloadPhase.VERIFYING else DownloadPhase.RUNNING,
-                    p.getLong("bytes", models.partFileFor(spec.fileName).length()), spec.sizeBytes, p.getLong("speed", 0), null)
-                WorkInfo.State.FAILED -> if (!models.fileFor(spec.fileName).exists())
-                    out[id] = DownloadUi(id, DownloadPhase.FAILED, models.partFileFor(spec.fileName).length(), spec.sizeBytes, 0,
+                    p.getLong("bytes", doneBytes(spec)), spec.totalBytes, p.getLong("speed", 0), null)
+                WorkInfo.State.FAILED -> if (!models.fileFor(spec.fileName).exists() || spec.projectorFile?.let { !models.fileFor(it).exists() } == true)
+                    out[id] = DownloadUi(id, DownloadPhase.FAILED, doneBytes(spec), spec.totalBytes, 0,
                         wi.outputData.getString("error") ?: "Download failed.")
                 else -> Unit
             }
@@ -100,7 +105,7 @@ class DownloadManager @Inject constructor(
 
     fun cancel(id: String) {
         wm.cancelUniqueWork("dl_$id")
-        Catalog.byId(id)?.let { models.partFileFor(it.fileName).delete() }
+        Catalog.byId(id)?.let { s -> models.partFileFor(s.fileName).delete(); s.projectorFile?.let { models.partFileFor(it).delete() } }
         wm.pruneWork()
     }
 }
@@ -131,63 +136,82 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
         return foreground(spec, -1, "Preparing download")
     }
 
+    private class Piece(val url: String, val sha256: String?, val size: Long, val fileName: String)
+
+    private sealed interface Step { data object Ok : Step; class Stop(val result: Result) : Step }
+
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val spec = Catalog.byId(inputData.getString("modelId") ?: "") ?: return@withContext Result.failure()
-        val url = spec.url ?: return@withContext Result.failure()
-        val part = models.partFileFor(spec.fileName)
-        val dest = models.fileFor(spec.fileName)
+        val pieces = buildList {
+            add(Piece(spec.url ?: return@withContext Result.failure(), spec.sha256, spec.sizeBytes, spec.fileName))
+            if (spec.projectorUrl != null && spec.projectorFile != null)
+                add(Piece(spec.projectorUrl, spec.projectorSha256, spec.projectorSize, spec.projectorFile))
+        }
         runCatching { setForeground(foreground(spec, 0, "Starting")) }
-
         try {
-            var conn: HttpURLConnection
-            var existing = if (part.exists()) part.length() else 0L
-            if (existing > spec.sizeBytes) { part.delete(); existing = 0 }
-            if (existing < spec.sizeBytes) {
-                conn = (URL(url).openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 20_000; readTimeout = 30_000; instanceFollowRedirects = true
-                    setRequestProperty("User-Agent", "LocalAI-Android/0.1")
-                    if (existing > 0) setRequestProperty("Range", "bytes=$existing-")
-                }
-                val code = conn.responseCode
-                if (code == 200 && existing > 0) { existing = 0 }               // server ignored Range: restart
-                else if (code != 200 && code != 206) return@withContext retryOrFail("Server returned HTTP $code")
-                RandomAccessFile(part, "rw").use { raf ->
-                    raf.setLength(existing); raf.seek(existing)
-                    conn.inputStream.use { input ->
-                        val buf = ByteArray(1 shl 20)
-                        var done = existing; var lastT = System.currentTimeMillis(); var lastB = done
-                        while (isActive) {
-                            val n = input.read(buf); if (n < 0) break
-                            raf.write(buf, 0, n); done += n
-                            val now = System.currentTimeMillis()
-                            if (now - lastT >= 700) {
-                                val speed = (done - lastB) * 1000 / (now - lastT)
-                                setProgress(workDataOf("bytes" to done, "speed" to speed))
-                                val pct = (done * 100 / spec.sizeBytes).toInt()
-                                nm.notify(spec.id.hashCode(), notification(spec, pct, "$pct% · ${speed / 1_000_000} MB/s"))
-                                lastT = now; lastB = done
-                            }
-                        }
-                    }
-                }
-                conn.disconnect()
-                if (isStopped) return@withContext Result.failure()               // paused: keep .part
+            var offset = 0L
+            for (piece in pieces) {
+                when (val r = fetch(spec, piece, offset)) { is Step.Stop -> return@withContext r.result; Step.Ok -> Unit }
+                offset += piece.size
             }
-            if (part.length() != spec.sizeBytes) return@withContext retryOrFail("Connection closed early (${part.length()} of ${spec.sizeBytes} bytes).")
-
-            setProgress(workDataOf("bytes" to part.length(), "verifying" to true))
-            nm.notify(spec.id.hashCode(), notification(spec, -1, "Verifying checksum"))
-            val sha = sha256(part)
-            if (spec.sha256 != null && !sha.equals(spec.sha256, ignoreCase = true)) {
-                part.delete()
-                return@withContext Result.failure(workDataOf("error" to "Checksum mismatch. The file was deleted; please download again."))
-            }
-            if (!part.renameTo(dest)) return@withContext Result.failure(workDataOf("error" to "Could not save the model file."))
             models.registerDownloaded(spec)
             Result.success()
         } catch (e: java.io.IOException) {
             retryOrFail(e.message ?: "Network error")
         }
+    }
+
+    /** Downloads one file with resume and checksum. [offset] = bytes of earlier pieces, for progress. */
+    private suspend fun fetch(spec: ModelSpec, piece: Piece, offset: Long): Step {
+        val dest = models.fileFor(piece.fileName)
+        if (dest.exists() && dest.length() == piece.size) return Step.Ok          // already done (e.g. adding image support later)
+        val part = models.partFileFor(piece.fileName)
+        val total = spec.totalBytes
+        var existing = if (part.exists()) part.length() else 0L
+        if (existing > piece.size) { part.delete(); existing = 0 }
+        if (existing < piece.size) {
+            val conn = (URL(piece.url).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 20_000; readTimeout = 30_000; instanceFollowRedirects = true
+                setRequestProperty("User-Agent", "LocalAI-Android/0.1")
+                if (existing > 0) setRequestProperty("Range", "bytes=$existing-")
+            }
+            val code = conn.responseCode
+            if (code == 200 && existing > 0) { existing = 0 }                   // server ignored Range: restart
+            else if (code != 200 && code != 206) return Step.Stop(retryOrFail("Server returned HTTP $code"))
+            RandomAccessFile(part, "rw").use { raf ->
+                raf.setLength(existing); raf.seek(existing)
+                conn.inputStream.use { input ->
+                    val buf = ByteArray(1 shl 20)
+                    var done = existing; var lastT = System.currentTimeMillis(); var lastB = done
+                    while (!isStopped) {
+                        val n = input.read(buf); if (n < 0) break
+                        raf.write(buf, 0, n); done += n
+                        val now = System.currentTimeMillis()
+                        if (now - lastT >= 700) {
+                            val speed = (done - lastB) * 1000 / (now - lastT)
+                            setProgress(workDataOf("bytes" to offset + done, "speed" to speed))
+                            val pct = ((offset + done) * 100 / total).toInt()
+                            val what = if (piece.fileName == spec.fileName) "" else "image encoder · "
+                            nm.notify(spec.id.hashCode(), notification(spec, pct, "$what$pct% · ${speed / 1_000_000} MB/s"))
+                            lastT = now; lastB = done
+                        }
+                    }
+                }
+            }
+            conn.disconnect()
+            if (isStopped) return Step.Stop(Result.failure())                       // paused: keep .part
+        }
+        if (part.length() != piece.size) return Step.Stop(retryOrFail("Connection closed early (${part.length()} of ${piece.size} bytes)."))
+
+        setProgress(workDataOf("bytes" to offset + part.length(), "verifying" to true))
+        nm.notify(spec.id.hashCode(), notification(spec, -1, "Verifying checksum"))
+        val sha = sha256(part)
+        if (piece.sha256 != null && !sha.equals(piece.sha256, ignoreCase = true)) {
+            part.delete()
+            return Step.Stop(Result.failure(workDataOf("error" to "Checksum mismatch. The file was deleted; please download again.")))
+        }
+        if (!part.renameTo(dest)) return Step.Stop(Result.failure(workDataOf("error" to "Could not save the model file.")))
+        return Step.Ok
     }
 
     private fun retryOrFail(msg: String): Result =

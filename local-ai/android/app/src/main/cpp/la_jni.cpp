@@ -19,6 +19,8 @@
 #include "common.h"
 #include "chat.h"
 #include "json-schema-to-grammar.h"
+#include "mtmd.h"
+#include "mtmd-helper.h"
 
 #define TAG "LocalAI-native"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
@@ -40,6 +42,9 @@ std::mutex                g_emu;
 llama_model *             g_emodel = nullptr;
 llama_context *           g_ectx   = nullptr;
 
+// Vision projector (mmproj) for multimodal models, bound to g_model.
+mtmd_context *            g_mtmd   = nullptr;
+
 constexpr int ST_OK = 0, ST_LENGTH = 1, ST_ABORTED = 2;
 constexpr int ERR_NO_MODEL = -1, ERR_OVERFLOW = -2, ERR_TEMPLATE = -3, ERR_DECODE = -4;
 
@@ -50,6 +55,7 @@ void log_cb(ggml_log_level level, const char * text, void *) {
 }
 
 void free_all() {
+    if (g_mtmd) { mtmd_free(g_mtmd); g_mtmd = nullptr; }
     g_tmpls.reset();
     if (g_ctx)   { llama_free(g_ctx); g_ctx = nullptr; }
     if (g_model) { llama_model_free(g_model); g_model = nullptr; }
@@ -181,7 +187,7 @@ Java_com_localai_app_runtime_inference_LlamaNative_generate(JNIEnv * env, jobjec
                                                             jobjectArray jcontents, jint maxTokens, jfloat temp,
                                                             jfloat topP, jint topK, jfloat minP, jfloat repeatPenalty,
                                                             jint seed, jboolean enableThinking, jstring jgrammar,
-                                                            jobject callback) {
+                                                            jbyteArray jrgb, jint imgW, jint imgH, jobject callback) {
     std::lock_guard<std::mutex> lock(g_mu);
     g_abort.store(false);
     if (!g_model || !g_ctx) return ERR_NO_MODEL;
@@ -211,35 +217,73 @@ Java_com_localai_app_runtime_inference_LlamaNative_generate(JNIEnv * env, jobjec
         catch (const std::exception & e2) { LOGE("template failed: %s", e2.what()); return ERR_TEMPLATE; }
     }
 
-    // 2. Tokenize. User-provided text is tokenized WITHOUT special-token parsing, so a message or a
-    //    document cannot inject control tokens such as <|im_end|>.
-    std::vector<llama_token> toks;
-    bool first = true;
-    for (const auto & part : cparams.prompt.parts) {
-        auto t = common_tokenize(g_ctx, part.text, /*add_special*/ first, /*parse_special*/ !part.is_input);
-        toks.insert(toks.end(), t.begin(), t.end());
-        first = false;
-    }
     const int n_ctx = static_cast<int>(llama_n_ctx(g_ctx));
-    if (toks.empty()) return ERR_TEMPLATE;
-    if (static_cast<int>(toks.size()) + 16 > n_ctx) return ERR_OVERFLOW;
-
-    // 3. Reuse the KV cache for the longest common prefix with the previous turn.
-    size_t keep = 0;
-    while (keep < g_cache.size() && keep < toks.size() && g_cache[keep] == toks[keep]) ++keep;
-    if (keep == toks.size()) --keep;   // always decode at least one token to get fresh logits
     llama_memory_t mem = llama_get_memory(g_ctx);
-    if (!llama_memory_seq_rm(mem, 0, static_cast<llama_pos>(keep), -1)) {
-        llama_memory_clear(mem, true);   // e.g. sliding-window caches cannot be partially trimmed
-        keep = 0;
-    }
-    g_cache.resize(keep);
-
-    const auto t0 = std::chrono::steady_clock::now();
+    size_t keep = 0, n_eval = 0, base_pos = 0;   // base_pos: tokens in the KV cache before generation
     int status = ST_OK;
-    if (!decode_range(toks, keep, status)) {
-        if (status == ERR_DECODE) { llama_memory_clear(mem, true); g_cache.clear(); }
-        return status;
+    const auto t0 = std::chrono::steady_clock::now();
+
+    if (jrgb != nullptr && g_mtmd != nullptr) {
+        // 2b. Image turn: the picture is inserted as its own part right before the user's last message.
+        //     Text parts keep the same special-token rules as below.
+        const jsize len = env->GetArrayLength(jrgb);
+        if (imgW <= 0 || imgH <= 0 || len != imgW * imgH * 3) return ERR_TEMPLATE;
+        std::vector<unsigned char> px(static_cast<size_t>(len));
+        env->GetByteArrayRegion(jrgb, 0, len, reinterpret_cast<jbyte *>(px.data()));
+        mtmd_bitmap * bmp = mtmd_bitmap_init(static_cast<uint32_t>(imgW), static_cast<uint32_t>(imgH), px.data());
+        const auto & parts = cparams.prompt.parts;
+        int last_input = -1;
+        for (size_t i = 0; i < parts.size(); ++i) if (parts[i].is_input) last_input = static_cast<int>(i);
+        std::vector<mtmd_input_text> texts(parts.size());
+        std::vector<mtmd_input_part> mparts; mparts.reserve(parts.size() + 1);
+        for (size_t i = 0; i < parts.size(); ++i) {
+            if (static_cast<int>(i) == last_input) mparts.push_back({nullptr, bmp});
+            texts[i] = {parts[i].text.c_str(), parts[i].text.size(), false, !parts[i].is_input};
+            mparts.push_back({&texts[i], nullptr});
+        }
+        if (last_input < 0) mparts.insert(mparts.end() - (mparts.empty() ? 0 : 1), {nullptr, bmp});
+        std::vector<const mtmd_input_part *> ptrs; for (auto & m : mparts) ptrs.push_back(&m);
+        mtmd_input_chunks * chunks = mtmd_input_chunks_init();
+        const int32_t rc = mtmd_tokenize_from_parts(g_mtmd, chunks, ptrs.data(), ptrs.size(), true);
+        mtmd_bitmap_free(bmp);
+        if (rc != 0) { mtmd_input_chunks_free(chunks); LOGE("image tokenize failed rc=%d", rc); return ERR_TEMPLATE; }
+        n_eval = mtmd_helper_get_n_tokens(chunks);
+        if (static_cast<int>(n_eval) + 16 > n_ctx) { mtmd_input_chunks_free(chunks); return ERR_OVERFLOW; }
+        llama_memory_clear(mem, true);
+        g_cache.clear();
+        llama_pos new_past = 0;
+        const int32_t erc = mtmd_helper_eval_chunks(g_mtmd, g_ctx, chunks, 0, 0, g_n_batch, true, &new_past);
+        mtmd_input_chunks_free(chunks);
+        if (erc != 0) { llama_memory_clear(mem, true); return g_abort.load() ? ST_ABORTED : ERR_DECODE; }
+        g_cache.push_back(-1);   // KV now holds image embeddings: never reuse it as a text prefix
+        base_pos = static_cast<size_t>(new_past);
+    } else {
+        // 2. Tokenize. User-provided text is tokenized WITHOUT special-token parsing, so a message or a
+        //    document cannot inject control tokens such as <|im_end|>.
+        std::vector<llama_token> toks;
+        bool first = true;
+        for (const auto & part : cparams.prompt.parts) {
+            auto t = common_tokenize(g_ctx, part.text, /*add_special*/ first, /*parse_special*/ !part.is_input);
+            toks.insert(toks.end(), t.begin(), t.end());
+            first = false;
+        }
+        if (toks.empty()) return ERR_TEMPLATE;
+        if (static_cast<int>(toks.size()) + 16 > n_ctx) return ERR_OVERFLOW;
+
+        // 3. Reuse the KV cache for the longest common prefix with the previous turn.
+        while (keep < g_cache.size() && keep < toks.size() && g_cache[keep] == toks[keep]) ++keep;
+        if (keep == toks.size()) --keep;   // always decode at least one token to get fresh logits
+        if (!llama_memory_seq_rm(mem, 0, static_cast<llama_pos>(keep), -1)) {
+            llama_memory_clear(mem, true);   // e.g. sliding-window caches cannot be partially trimmed
+            keep = 0;
+        }
+        g_cache.resize(keep);
+        n_eval = toks.size() - keep;
+        base_pos = toks.size();
+        if (!decode_range(toks, keep, status)) {
+            if (status == ERR_DECODE) { llama_memory_clear(mem, true); g_cache.clear(); }
+            return status;
+        }
     }
     const auto t1 = std::chrono::steady_clock::now();
 
@@ -271,7 +315,7 @@ Java_com_localai_app_runtime_inference_LlamaNative_generate(JNIEnv * env, jobjec
     status = ST_LENGTH;
     while (n_gen < maxTokens) {
         if (g_abort.load()) { status = ST_ABORTED; break; }
-        if (static_cast<int>(g_cache.size()) >= n_ctx - 1) { status = ST_LENGTH; break; }
+        if (static_cast<int>(base_pos) + n_gen >= n_ctx - 1) { status = ST_LENGTH; break; }
         llama_token id = llama_sampler_sample(smpl, g_ctx, -1);
         if (llama_vocab_is_eog(vocab, id)) { status = ST_OK; break; }
 
@@ -296,9 +340,22 @@ Java_com_localai_app_runtime_inference_LlamaNative_generate(JNIEnv * env, jobjec
 
     const auto t2 = std::chrono::steady_clock::now();
     const auto ms = [](auto a, auto b) { return static_cast<jlong>(std::chrono::duration_cast<std::chrono::milliseconds>(b - a).count()); };
-    env->CallVoidMethod(callback, onDone, static_cast<jint>(toks.size() - keep), static_cast<jint>(keep), n_gen, ms(t0, t1), ms(t1, t2));
+    env->CallVoidMethod(callback, onDone, static_cast<jint>(n_eval), static_cast<jint>(keep), n_gen, ms(t0, t1), ms(t1, t2));
     if (env->ExceptionCheck()) env->ExceptionClear();
     return status;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_localai_app_runtime_inference_LlamaNative_loadProjector(JNIEnv * env, jobject, jstring jpath, jint nThreads) {
+    std::lock_guard<std::mutex> lock(g_mu);
+    if (!g_model) return -1;
+    if (g_mtmd) { mtmd_free(g_mtmd); g_mtmd = nullptr; }
+    mtmd_context_params p = mtmd_context_params_default();
+    p.use_gpu = false; p.n_threads = nThreads; p.print_timings = false; p.warmup = false;
+    g_mtmd = mtmd_init_from_file(jstr(env, jpath).c_str(), g_model, p);
+    if (!g_mtmd) return -2;
+    if (!mtmd_support_vision(g_mtmd)) { mtmd_free(g_mtmd); g_mtmd = nullptr; return -3; }
+    return 0;
 }
 
 JNIEXPORT jstring JNICALL

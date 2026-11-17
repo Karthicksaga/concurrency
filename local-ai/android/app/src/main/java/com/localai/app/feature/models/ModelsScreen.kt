@@ -153,7 +153,7 @@ fun ModelCard(row: ModelRow, onOpen: () -> Unit, onDownload: () -> Unit, onPause
                 row.installed && s.purpose == "embed" -> StatusPill("Ready for search", Tone.OK)
                 row.installed -> FilledTonalButton(onClick = onUse, contentPadding = PaddingValues(horizontal = 14.dp)) { Text("Use") }
                 row.download == null -> Button(onClick = onDownload, contentPadding = PaddingValues(horizontal = 12.dp)) {
-                    Icon(Icons.Outlined.Download, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text(fmtBytes(s.sizeBytes))
+                    Icon(Icons.Outlined.Download, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text(fmtBytes(s.totalBytes))
                 }
             }
         }
@@ -162,7 +162,7 @@ fun ModelCard(row: ModelRow, onOpen: () -> Unit, onDownload: () -> Unit, onPause
             VerdictPill(row.verdict)
             if (row.recommended) Tag("Recommended", La.colors.accent, Icons.Outlined.Star)
             Tag("≈ ${fmtGiB(row.estimateGiB)} in memory")
-            if (!row.installed) Tag(fmtBytes(s.sizeBytes) + " download")
+            if (!row.installed) Tag(fmtBytes(s.totalBytes) + " download")
             s.tags.forEach { Tag(it, if (it == "Lite") La.colors.knowledge else null) }
         }
         row.download?.let { d ->

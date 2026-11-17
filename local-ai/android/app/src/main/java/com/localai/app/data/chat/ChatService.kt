@@ -39,6 +39,16 @@ data class LiveGeneration(val conversationId: String, val messageId: String, val
 data class ToolRequest(val conversationId: String, val tool: ToolSpec, val input: String, val answer: CompletableDeferred<Boolean>)
 
 const val SUPERVISOR = "supervisor"
+const val DEFAULT_PHOTO_PROMPT = "What is in this photo? Explain it."
+
+/**
+ * The photo the model should see for the next answer: the latest one, if it was attached within the last two user
+ * messages, so follow-up questions ("what brand is it?") still see it.
+ */
+fun photoInScope(messages: List<MessageEntity>): java.io.File? {
+    val users = messages.filter { it.role == "user" }.takeLast(2)
+    return users.lastOrNull { it.imagePath != null }?.imagePath?.let { java.io.File(it) }?.takeIf { it.exists() }
+}
 
 /** Hides reasoning blocks emitted by "thinking" models unless the user asked to see them. */
 fun visibleText(raw: String, showReasoning: Boolean): String {
@@ -88,7 +98,11 @@ class ChatService @Inject constructor(
         return id
     }
 
-    suspend fun delete(id: String) { if (_live.value?.conversationId == id) stop(); dao.deleteMessages(id); dao.deleteConversation(id) }
+    suspend fun delete(id: String) {
+        if (_live.value?.conversationId == id) stop()
+        dao.messages(id).forEach { m -> m.imagePath?.let { java.io.File(it).delete() } }
+        dao.deleteMessages(id); dao.deleteConversation(id)
+    }
 
     suspend fun updateConversation(id: String, block: (ConversationEntity) -> ConversationEntity) {
         val c = dao.conversation(id) ?: return
@@ -97,15 +111,17 @@ class ChatService @Inject constructor(
 
     fun answerTool(allow: Boolean) { _toolRequest.value?.answer?.complete(allow); _toolRequest.value = null }
 
-    fun send(conversationId: String, text: String) {
+    fun send(conversationId: String, text: String, imagePath: String? = null) {
         if (_live.value != null) return
         scope.launch {
             val c = dao.conversation(conversationId) ?: return@launch
             val now = System.currentTimeMillis()
-            dao.upsertMessage(MessageEntity(UUID.randomUUID().toString(), conversationId, "user", text.trim(), "COMPLETE", null, null, null, null, now))
-            val title = if (c.title == "New chat") text.trim().lineSequence().first().take(48) else c.title
+            val body = text.trim().ifBlank { if (imagePath != null) DEFAULT_PHOTO_PROMPT else return@launch }
+            dao.upsertMessage(MessageEntity(UUID.randomUUID().toString(), conversationId, "user", body, "COMPLETE", null, null, null, null, now, imagePath = imagePath))
+            val title = if (c.title == "New chat") (if (imagePath != null && text.isBlank()) "Photo" else body.lineSequence().first().take(48)) else c.title
             dao.updateConversation(c.copy(title = title, updatedAt = now))
-            if (c.agentId == SUPERVISOR) workflows.start(text.trim(), emptyList(), conversationId) else respond(conversationId)
+            // Photos are answered directly by the vision model; the supervisor's text-only agents can't see them.
+            if (c.agentId == SUPERVISOR && imagePath == null) workflows.start(body, emptyList(), conversationId) else respond(conversationId)
         }
     }
 
@@ -143,8 +159,11 @@ class ChatService @Inject constructor(
                 show = settings.current().showReasoning
                 val agent = c.agentId?.let { agents.get(it) }
                 agentId = agent?.id
-                val history = dao.messages(conversationId).filter { it.status != "ERROR" }.map { ChatTurn(it.role, it.content) }
-                val req = AgentRequest(agent, c.systemPrompt, history, c.kbIds.split(',').filter { it.isNotBlank() })
+                val msgs = dao.messages(conversationId).filter { it.status != "ERROR" }
+                val image = photoInScope(msgs)
+                // Older photos are not re-sent (each costs hundreds of tokens); the model's earlier description stays in the history.
+                val history = msgs.map { ChatTurn(it.role, if (it.imagePath != null && it.imagePath != image?.path) "[photo] ${it.content}" else it.content) }
+                val req = AgentRequest(agent, c.systemPrompt, history, c.kbIds.split(',').filter { it.isNotBlank() }, image = image)
                 val confirmer = ToolConfirmer { tool, input ->
                     val d = CompletableDeferred<Boolean>()
                     _toolRequest.value = ToolRequest(conversationId, tool, input, d)

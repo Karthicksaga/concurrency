@@ -56,6 +56,7 @@ class ModelRepository @Inject constructor(
         if ((engine.state.value as? EngineState.Ready)?.modelId == id) engine.unload()
         fileFor(m.fileName).delete()
         partFileFor(m.fileName).delete()
+        Catalog.byId(id)?.projectorFile?.let { fileFor(it).delete(); partFileFor(it).delete() }
         dao.delete(id)
         if (settings.current().activeModelId == id) settings.setActiveModel(null)
     }
@@ -64,7 +65,9 @@ class ModelRepository @Inject constructor(
     suspend fun activate(id: String, allowNotRecommended: Boolean = false): Result<Unit> {
         val entity = dao.get(id) ?: return Result.failure(IllegalStateException("Model is not installed yet. Finish the download first."))
         if (Catalog.isEmbedding(id)) return Result.failure(IllegalStateException("${entity.name} is an embedding model for search; choose a chat model."))
-        val spec = entity.toSpec()
+        // Catalog spec (with its image encoder) when that encoder is on disk; otherwise the stored text-only spec.
+        val projector = Catalog.byId(id)?.takeIf { it.projectorFile != null && fileFor(it.projectorFile).exists() }
+        val spec = projector ?: entity.toSpec()
         val file = fileFor(entity.fileName)
         if (!file.exists()) return Result.failure(IllegalStateException("The model file is missing. Download it again."))
         val s = settings.current()
@@ -77,8 +80,14 @@ class ModelRepository @Inject constructor(
             return Result.failure(IllegalStateException("${spec.name} needs more memory than this phone can safely give it at ${ctx / 1024}K context."))
         }
         settings.setActiveModel(id)
-        return engine.load(id, file, LoadConfig(ctx, policy.threads, policy.defaults.batchSize, s.kvQ8))
+        val loaded = engine.load(id, file, LoadConfig(ctx, policy.threads, policy.defaults.batchSize, s.kvQ8))
+        // A failed image encoder leaves a working text model: photos then show a clear "can't see images" error.
+        if (loaded.isSuccess && projector != null) engine.loadProjector(fileFor(projector.projectorFile!!), policy.threads)
+        return loaded
     }
+
+    /** Catalog vision model installed without its image encoder (e.g. installed before image support existed). */
+    fun missingProjector(id: String): Boolean = Catalog.byId(id)?.projectorFile?.let { !fileFor(it).exists() } ?: false
 
     /** Ensures the active model is loaded; returns its id or an error message. */
     suspend fun ensureLoaded(): Result<String> {

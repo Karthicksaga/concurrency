@@ -81,11 +81,13 @@ class ModelsViewModel @Inject constructor(
     fun consumeMessage() { _message.value = null }
 
     fun download(spec: ModelSpec) = viewModelScope.launch {
-        val need = (spec.sizeBytes - repo.partFileFor(spec.fileName).let { if (it.exists()) it.length() else 0L }) + 512L * 1024 * 1024
+        fun left(name: String, size: Long) = if (repo.fileFor(name).exists()) 0L else size - repo.partFileFor(name).let { if (it.exists()) it.length() else 0L }
+        val need = left(spec.fileName, spec.sizeBytes) + (spec.projectorFile?.let { left(it, spec.projectorSize) } ?: 0L) + 512L * 1024 * 1024
         if (deviceService.freeStorage() < need) { _message.value = "Not enough free storage. Free about ${need / (1 shl 20)} MB first."; return@launch }
         downloads.start(spec)
         if (settingsRepo.current().wifiOnly) _message.value = "Download queued. It runs on Wi-Fi (change this in Settings)."
     }
+    fun missingProjector(id: String) = repo.missingProjector(id)
     fun pause(id: String) = downloads.pause(id)
     fun cancel(id: String) = downloads.cancel(id)
 

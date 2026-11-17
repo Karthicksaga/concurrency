@@ -101,7 +101,7 @@ fun ModelDetailScreen(nav: NavController, vm: ModelsViewModel = hiltViewModel())
             LaCard {
                 KeyValue("Parameters", if (spec.paramsB < 1) "${(spec.paramsB * 1000).toInt()}M" else "%.1fB".format(spec.paramsB))
                 KeyValue("Quantisation", spec.quant)
-                KeyValue("File size", fmtBytes(spec.sizeBytes))
+                KeyValue("File size", fmtBytes(spec.totalBytes))
                 KeyValue("Architecture", spec.arch)
                 KeyValue("Trained context", "${spec.ctxTrain / 1024}K")
                 KeyValue("Licence", spec.license)
@@ -145,9 +145,14 @@ fun ModelDetailScreen(nav: NavController, vm: ModelsViewModel = hiltViewModel())
             }
             Spacer(Modifier.height(8.dp))
         }
+        if (row.installed && spec.vision && vm.missingProjector(id)) {
+            OutlinedButton(enabled = row.download == null, onClick = { vm.download(spec) }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                Text(if (row.download == null) "Add image support (${fmtBytes(spec.projectorSize)})" else "Downloading image support… ${(row.download!!.progress * 100).toInt()}%")
+            }
+        }
         Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             when {
-                !row.installed && row.download == null -> Button(onClick = { vm.download(spec) }, Modifier.fillMaxWidth()) { Text("Download ${fmtBytes(spec.sizeBytes)}") }
+                !row.installed && row.download == null -> Button(onClick = { vm.download(spec) }, Modifier.fillMaxWidth()) { Text("Download ${fmtBytes(spec.totalBytes)}") }
                 !row.installed -> OutlinedButton(onClick = { nav.popBackStack() }, Modifier.fillMaxWidth()) { Text("Downloading… ${(row.download!!.progress * 100).toInt()}%") }
                 row.loaded -> {
                     OutlinedButton(onClick = { vm.unload() }, Modifier.weight(1f)) { Text("Unload") }
@@ -162,7 +167,7 @@ fun ModelDetailScreen(nav: NavController, vm: ModelsViewModel = hiltViewModel())
     SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).padding(bottom = 88.dp))
     }
     if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false }, title = { Text("Delete ${spec.name}?") },
-        text = { Text("Frees ${fmtBytes(spec.sizeBytes)}. Chats are kept.") },
+        text = { Text("Frees ${fmtBytes(spec.totalBytes)}. Chats are kept.") },
         confirmButton = { TextButton(onClick = { vm.delete(id); confirmDelete = false; nav.popBackStack() }) { Text("Delete", color = La.colors.bad) } },
         dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } })
     if (confirmForce) AlertDialog(onDismissRequest = { confirmForce = false }, title = { Text("Load anyway?") },
