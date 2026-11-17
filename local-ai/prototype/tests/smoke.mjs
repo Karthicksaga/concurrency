@@ -437,6 +437,24 @@ await step('Voice: talk over the assistant to interrupt; natural voice picker', 
   assert(await page.evaluate(() => LA.S.settings.bargeIn === 'SENSITIVE'), 'barge-in sensitivity saved');
 });
 
+await step('Automatic tools: date, scam check and a PDF are picked by the AI itself', async () => {
+  await go('chat'); await page.click('[data-action=new]'); await page.waitForTimeout(250);
+  const ask = async (t) => {
+    const n = await page.locator('.msg.ai').count();
+    await page.fill('#composer-input', t); await page.click('[data-action=send]');
+    await page.waitForFunction((k) => document.querySelectorAll('.msg.ai').length > k && !document.querySelector('[data-action=stop]'), n, { timeout: 15000 });
+    return page.locator('.msg.ai').last().innerText();
+  };
+  assert((await ask("What's the date today?")).includes('Date & time · used automatically'), 'date tool');
+  assert((await ask('Dear Customer, your SBI account will be BLOCKED today. Update KYC at http://sbi-kyc-update.xyz')).includes('Scam check · used automatically'), 'scam tool');
+  const last = await ask('Write a leave letter for 20-22 Nov and save it as a PDF');
+  assert(last.includes('Create document') && /Leave request( \(\d+\))?\.pdf/.test(last), 'document created: ' + last.replace(/\n/g, ' | ').slice(0, 400));
+  await page.locator('[data-action=open-file]').last().click();
+  assert(await page.locator('.sheet .paper.pdf').count() === 1, 'opens the PDF preview');
+  await page.click('.sheet [data-action=close-sheet]');
+  await shot('34-auto-tools');
+});
+
 await step('Launch animation plays and gets out of the way', async () => {
   await go('home');
   await page.evaluate(() => LA.splash(1900));

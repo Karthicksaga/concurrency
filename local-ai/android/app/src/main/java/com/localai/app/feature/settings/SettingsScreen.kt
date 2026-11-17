@@ -156,6 +156,7 @@ fun SettingsScreen(nav: NavController, vm: SettingsViewModel = hiltViewModel()) 
             FlowRowSimple { listOf(0, 2, 4, 6, 8).forEach { n -> FilterChip(selected = settings.threads == n, onClick = { vm.set { setThreads(n) } }, label = { Text(if (n == 0) "Auto (${policy.threads})" else "$n") }) } }
             Spacer(Modifier.height(8.dp))
             ToggleRow("Compressed context cache (q8_0)", "Halves context memory with negligible quality loss.", settings.kvQ8) { v -> vm.set { setKvQ8(v) } }
+            ToggleRow("Use tools automatically", "In normal chat the AI picks tools itself: calculator, date, scam check, your documents, notes, PDF/Word files. Ordinary messages aren't slowed down.", settings.autoTools) { v -> vm.set { setAutoTools(v) } }
             ToggleRow("Show reasoning", "Let thinking models (e.g. Qwen3) reason before answering. Slower.", settings.showReasoning) { v -> vm.set { setShowReasoning(v) } }
             Spacer(Modifier.height(6.dp))
             OutlinedTextField(prompt, { prompt = it }, label = { Text("Default system prompt") }, modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 5)

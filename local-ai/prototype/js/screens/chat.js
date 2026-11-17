@@ -17,6 +17,20 @@ window.LA = window.LA || {};
   function respond(c, text, variant) {
     const t = text.toLowerCase(); const hasKb = (id) => c.kbs.includes(id);
     const recent = c.messages.filter((m) => m.role === 'user').slice(-2).find((m) => m.photo);
+    // Automatic tools (no agent selected): the same skills the app routes to on the phone.
+    if (!c.agent && !c.agentMode && LA.S.settings.autoTools !== false) {
+      if (/\b(what('?s| is) (the )?(date|day|time)|today'?s date|what day is)\b/i.test(text)) {
+        const d = new Date(); return { tool: 'date_time', text: 'Today is **' + d.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) + '**, and it is ' + d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) + ' on this phone.' };
+      }
+      if (text.length >= 40 && LA.scamCheck) { const r = LA.scamCheck(text); if (r.level !== 'LOW') return { tool: 'scam_check', text: (r.level === 'HIGH' ? '**This looks like a scam.** ' : '**This message is suspicious.** ') + 'Warning signs: ' + r.flags.slice(0, 3).map((f) => f.title.toLowerCase()).join('; ') + '.\n\n- Don’t open the link or call the number in the message\n- Never share an OTP or UPI PIN\n- Lost money? Call **1930** right away' }; }
+      const doc = text.match(/\b(pdf|word|docx)\b/i);
+      if (doc && /\b(make|create|save|write|generate|export|as)\b/i.test(text)) {
+        const fmt = /word|docx/i.test(doc[0]) ? 'docx' : 'pdf';
+        const md = '# Leave request\n\nDear Manager,\n\nI would like to request leave from **20 to 22 November** for a family function. My work is handed over to Arjun.\n\nThank you,  \n[Your name]';
+        const e = LA.addExport('Leave request', fmt, md);
+        return { tool: 'create_document', file: e.id, text: md };
+      }
+    }
     if (recent && LA.isVision(c.model || LA.S.activeModel)) return { text: recent.photo === 'receipt' && /expensive|most|costly/.test(t) ? 'The **basmati rice (5 kg) at 649**, about two-thirds of the bill.' : 'Looking at the same photo again: ' + LA.photoAnswer(recent.photo, text).split('\n')[0] };
     if (hasKb('kb-finance') && /deposit|rent|lease|notice|insurance|clause/.test(t)) return {
       text: variant ? 'Short version: **two months’ rent** as deposit, refunded **within 30 days** after you move out, minus documented deductions [chunk:7]. Give **60 days’ written notice** before leaving [chunk:12].' : 'According to your lease, the security deposit equals **two months’ rent** and is refunded **within 30 days** of the tenancy ending, minus documented deductions [chunk:7].\n\nTermination needs **not less than 60 days’ written notice** from either side [chunk:12]. Minor repairs under 2,000 are your responsibility [chunk:15].',
@@ -47,7 +61,7 @@ window.LA = window.LA || {};
     stream = null; LA.save();
   }
   function startStream(c, idx, resp) {
-    const m = c.messages[idx]; m.text = ''; m.streaming = true; m.sources = resp.sources || null; m.tool = resp.tool || null; m.stopped = false;
+    const m = c.messages[idx]; m.text = ''; m.streaming = true; m.sources = resp.sources || null; m.tool = resp.tool || null; m.file = resp.file || null; m.stopped = false;
     m.model = c.model || LA.S.activeModel; m.tps = +(LA.device().genTps * (0.9 + Math.random() * 0.2)).toFixed(1);
     const tokens = resp.text.match(/\s*\S+|\n/g) || [];
     stream = { convId: c.id, idx, tokens, pos: 0 };
@@ -82,8 +96,10 @@ window.LA = window.LA || {};
     }
     const sources = m.sources && !m.streaming ? `<div class="sources">${m.sources.map((s) => `<button class="source" data-action="cite" data-n="${s.n}"><span class="n">${s.n}</span><span class="grow ellipsis">${esc(s.title)}</span><span class="faint xs" style="flex:none">${esc(s.where)}</span></button>`).join('')}</div>` : '';
     const speaking = LA.speech.speakingId === c.id + ':' + i;
+    const ex = m.file && !m.streaming && LA.S.exports.find((x) => x.id === m.file);
+    const fileChip = ex ? `<div class="pending-photo" style="margin-top:8px">${I('doc')}<div class="grow"><b class="small">${esc(ex.name)}</b><div class="xs faint">Saved on this phone</div></div><button class="btn btn-tonal btn-sm" data-action="open-file" data-id="${ex.id}">Open</button></div>` : '';
     const actions = m.streaming ? '' : `<div class="msg-actions">${C.ib('copy', 'copy-msg', 'Copy response', `data-i="${i}"`)}${C.ib(speaking ? 'stop' : 'volume', 'speak-msg', speaking ? 'Stop reading' : 'Read aloud', `data-i="${i}"${speaking ? ' style="color:var(--accent)"' : ''}`)}${C.ib('doc', 'save-msg', 'Save as PDF or Word', `data-i="${i}"`)}${isLast ? C.ib('refresh', 'regen', 'Regenerate response') : ''}<span class="sim-note" style="margin-left:6px">${I('info', 'icon-sm')}Simulated · ${m.tps || '—'} tok/s</span></div>`;
-    return `<div class="msg ai" data-i="${i}"><div class="who">${ag ? C.avatar(ag, 'sm') : ''}<b>${ag ? esc(ag.name) : esc(model.name)}</b>${m.tool ? `<span class="tag">${I('calc', 'icon-sm')}calculator</span>` : ''}</div>${wf}<div class="md">${LA.md(m.text || '')}${m.streaming ? '<span class="cursor"></span>' : ''}${m.stopped ? '<p class="small faint">Generation stopped.</p>' : ''}</div>${sources}${actions}</div>`;
+    return `<div class="msg ai" data-i="${i}"><div class="who">${ag ? C.avatar(ag, 'sm') : ''}<b>${ag ? esc(ag.name) : esc(model.name)}</b>${m.tool ? `<span class="tag">${I(({ calculator: 'calc', date_time: 'history', scam_check: 'shield', create_document: 'doc' })[m.tool] || 'tool', 'icon-sm')}${({ calculator: 'Calculator', date_time: 'Date & time', scam_check: 'Scam check', create_document: 'Create document' })[m.tool] || m.tool} · used automatically</span>` : ''}</div>${wf}<div class="md">${LA.md(m.text || '')}${m.streaming ? '<span class="cursor"></span>' : ''}${m.stopped ? '<p class="small faint">Generation stopped.</p>' : ''}</div>${fileChip}${sources}${actions}</div>`;
   }
 
   /* Dictation: the browser's speech recognizer when present, otherwise a simulated phrase typed in. */
@@ -226,6 +242,7 @@ window.LA = window.LA || {};
         LA.photoSheet((p) => { c.pendingPhoto = p; LA.save(); LA.refresh(); }, () => LA.screens.chat.actions['attach-doc'](el, ev, id), extra);
       },
       drawer: (el, ev, id) => LA.chatDrawer(id),
+      'open-file': (el) => { const e = LA.S.exports.find((x) => x.id === el.getAttribute('data-id')); if (e) LA.previewExport(e); },
       'new-here': () => LA.newChat({}),
       'go-scam': () => { LA.closeSheet(); LA.go('scam'); }, 'go-studio': () => { LA.closeSheet(); LA.go('studio'); }, 'go-read': () => { LA.closeSheet(); LA.go('read'); },
       'photo-remove': (el, ev, id) => { const c = LA.conv(id); c.pendingPhoto = null; LA.save(); LA.refresh(); },

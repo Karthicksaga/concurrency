@@ -76,6 +76,7 @@ class ChatService @Inject constructor(
     private val memory: MemoryService,
     private val workflows: WorkflowService,
     private val settings: SettingsRepository,
+    private val studio: com.localai.app.data.documents.DocumentStudio,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val _live = MutableStateFlow<LiveGeneration?>(null)
@@ -178,6 +179,12 @@ class ChatService @Inject constructor(
                 }
                 text = visibleText(r.text, show).ifBlank { if (r.status == "COMPLETE") "(The model returned an empty answer.)" else r.text }
                 status = r.status; modelId = r.modelId; sources = r.sources; traces = r.tools
+                // The AI chose "create document": save the answer as PDF/Word and show it in the tool row.
+                r.saveAs?.let { fmt ->
+                    _live.value = LiveGeneration(conversationId, msgId, text, "Saving the document…")
+                    val f = runCatching { studio.exportMarkdown(text, if (fmt == "docx") com.localai.app.data.documents.DocFormat.DOCX else com.localai.app.data.documents.DocFormat.PDF, "Document") }.getOrNull()
+                    traces = traces.map { t -> if (t.tool == "create_document") t.copy(output = if (f != null) "saved:" + f.absolutePath else "Could not save the file.") else t }
+                }
                 tps = r.stats?.genTps; ptps = r.stats?.promptTps; toks = r.stats?.generatedTokens
             } catch (e: kotlinx.coroutines.CancellationException) {
                 status = "STOPPED"; text = visibleText(_live.value?.text ?: "", show)

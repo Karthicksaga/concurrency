@@ -47,6 +47,7 @@ data class AppSettings(
     val readAloud: Boolean = false,       // speak every reply in normal chat
     val ocrLanguages: String = "",
     val bargeIn: String = "NORMAL",
+    val autoTools: Boolean = true,        // in normal chat, the AI picks tools (calculator, date, scam check, documents…) itself
     val ttsVoice: String = "",            // natural voice id (NaturalVoices), "" = the phone's text-to-speech voice
     val ttsSpeaker: Int = 0,              // speaker within a multi-speaker voice       // interrupt the assistant by talking: OFF | NORMAL | SENSITIVE        // extra text-recognition languages (csv of tessdata codes); English is always on
 )
@@ -94,6 +95,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         val ocrLangs = stringPreferencesKey("ocr_langs")
         val bargeIn = stringPreferencesKey("barge_in")
         val ttsVoice = stringPreferencesKey("tts_voice")
+        val autoTools = booleanPreferencesKey("auto_tools")
         val ttsSpeaker = intPreferencesKey("tts_speaker")
         fun ctx(id: String) = intPreferencesKey("ctx_$id")
         fun temp(id: String) = floatPreferencesKey("temp_$id")
@@ -123,6 +125,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
             ocrLanguages = p[K.ocrLangs] ?: "",
             bargeIn = p[K.bargeIn] ?: "NORMAL",
             ttsVoice = p[K.ttsVoice] ?: "",
+            autoTools = p[K.autoTools] ?: true,
             ttsSpeaker = p[K.ttsSpeaker] ?: 0,
         )
     }
@@ -144,6 +147,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
     }
     suspend fun setFolderSync(v: Boolean) = edit { it[K.folderSync] = v }
     suspend fun setBargeIn(v: String) = edit { it[K.bargeIn] = v }
+    suspend fun setAutoTools(v: Boolean) = edit { it[K.autoTools] = v }
     suspend fun setTtsVoice(id: String, speaker: Int = 0) = edit { it[K.ttsVoice] = id; it[K.ttsSpeaker] = speaker }
     suspend fun setOcrLanguages(codes: Collection<String>) = edit { it[K.ocrLangs] = codes.filter { c -> c != "eng" }.distinct().joinToString(",") }
     suspend fun setVoice(language: String, rate: Float, readAloud: Boolean) = edit {

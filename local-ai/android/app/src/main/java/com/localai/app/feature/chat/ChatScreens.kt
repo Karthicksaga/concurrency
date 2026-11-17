@@ -462,7 +462,7 @@ fun ChatScreen(nav: NavController, vm: ChatViewModel = hiltViewModel()) {
                 if (m.role == "user") UserBubble(m.content, m.imagePath)
                 else Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(if (m.runId != null) "Supervisor workflow" else agent?.name ?: installed.firstOrNull { it.id == m.modelId }?.name ?: m.modelId ?: "Assistant", fontSize = 12.sp, color = La.colors.text3)
-                    toolsFromJson(m.toolsJson).forEach { t -> ToolTraceRow(t) }
+                    toolsFromJson(m.toolsJson).forEach { t -> ToolTraceRow(t, onOpen = { vm.openExport(it) }, onShare = { vm.shareExport(it) }) }
                     if (m.status == "ERROR") Banner(m.content, Tone.BAD) else MarkdownText(m.content)
                     if (m.status == "STOPPED") Text("Generation stopped.", fontSize = 12.sp, color = La.colors.text3)
                     val sources = sourcesFromJson(m.sourcesJson)
@@ -628,7 +628,20 @@ private fun SourceRow(s: SourceRef, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ToolTraceRow(t: ToolTrace) {
+private fun ToolTraceRow(t: ToolTrace, onOpen: (File) -> Unit = {}, onShare: (File) -> Unit = {}) {
+    val saved = t.tool == "create_document" && t.output.startsWith("saved:")
+    if (saved) {
+        val f = File(t.output.removePrefix("saved:"))
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(La.colors.surface2).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.Description, null, tint = La.colors.accent)
+            Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                Text(f.name, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                Text(if (f.exists()) "Saved on this phone" else "File was deleted", fontSize = 11.5.sp, color = La.colors.text3)
+            }
+            if (f.exists()) { TextButton(onClick = { onOpen(f) }) { Text("Open") }; TextButton(onClick = { onShare(f) }) { Text("Share") } }
+        }
+        return
+    }
     val ok = t.status == "OK"
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(La.colors.surface2).padding(horizontal = 10.dp, vertical = 6.dp)) {
         Text("${t.tool.replace('_', ' ')} · ${if (ok) "used" else if (t.status == "DENIED") "declined" else "failed"}", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold,

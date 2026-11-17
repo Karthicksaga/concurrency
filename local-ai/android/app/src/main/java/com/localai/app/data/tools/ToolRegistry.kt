@@ -56,6 +56,12 @@ class ToolRegistry @Inject constructor(
     val tools = listOf(
         ToolSpec("calculator", "Calculator", "Evaluates arithmetic with a safe parser. No variables, no code.",
             "an arithmetic expression, e.g. (1250 * 12) * 0.18", Risk.READ, Permission.ALLOWED, maxInput = 200),
+        ToolSpec("date_time", "Date & Time", "Gives today's date, weekday and the current time on this phone (models don't know the date).",
+            "'now'", Risk.READ, Permission.ALLOWED, maxInput = 20),
+        ToolSpec("scam_check", "Scam Check", "Checks a message, link or text for common fraud signs with on-device rules.",
+            "the full message text", Risk.READ, Permission.ALLOWED, maxInput = 4000),
+        ToolSpec("create_document", "Create Document", "Saves the answer as a PDF or Word file on this phone, with Open and Share.",
+            "'pdf' or 'docx'", Risk.WRITE_LOCAL, Permission.ALLOWED, maxInput = 10),
         ToolSpec("knowledge_search", "Knowledge Search", "Searches the agent's knowledge bases by meaning and keywords, with sources.",
             "a search query in plain words", Risk.READ, Permission.ALLOWED, timeoutMs = 15_000, maxInput = 300),
         ToolSpec("document_reader", "Document Reader", "Reads the beginning of a document from the agent's knowledge bases.",
@@ -115,6 +121,20 @@ class ToolRegistry @Inject constructor(
 
     private suspend fun run(id: String, input: String, scope: ToolScope): ToolResult = when (id) {
         "calculator" -> { val v = Calculator.eval(input); ToolResult(true, Calculator.format(v), "OK") }
+        "date_time" -> {
+            val now = java.util.Calendar.getInstance()
+            val f = java.text.SimpleDateFormat("EEEE, d MMMM yyyy, HH:mm (zzzz)", java.util.Locale.ENGLISH)
+            ToolResult(true, f.format(now.time), "OK")
+        }
+        "scam_check" -> {
+            val r = com.localai.app.data.safety.ScamCheck.analyze(input)
+            ToolResult(true, "Verdict: ${r.level.label}." + if (r.flags.isEmpty()) "" else " Red flags: " + r.flags.joinToString("; ") { "${it.title} (\"${it.evidence}\")" } +
+                ". Advice: never share an OTP or PIN, don't open links or call numbers from the message, call 1930 if money was lost.", "OK")
+        }
+        "create_document" -> {
+            val fmt = if (input.lowercase().contains("doc") || input.lowercase().contains("word")) "docx" else "pdf"
+            ToolResult(true, "The answer will be saved as a ${if (fmt == "pdf") "PDF" else "Word"} file after it is written.", "OK")
+        }
         "knowledge_search", "code_search" -> {
             if (scope.kbIds.isEmpty()) ToolResult(false, "This agent has no knowledge bases.", "ERROR") else {
                 var hits = knowledge.retrieve(input, scope.kbIds, 5)

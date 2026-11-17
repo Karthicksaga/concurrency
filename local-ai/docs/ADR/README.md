@@ -22,3 +22,4 @@ The blueprint was approved on 2026-11-17: ADRs 0001–0010 are **Accepted**. ADR
 | [0015](0015-voice-vision-documents.md) | Voice, photos (vision models) and Document Studio on the phone (Accepted) |
 | [0016](0016-ocr-scam-check-read-aloud.md) | On-device text recognition (Tesseract), Scam check and "Read it to me" (Accepted) |
 | [0017](0017-natural-voices-and-barge-in.md) | Natural on-device voices (sherpa-onnx/Piper) and talking over the assistant (Accepted) |
+| [0018](0018-automatic-tools-in-chat.md) | Automatic tools in normal chat: on-device skill router + one constrained decision (Accepted) |
