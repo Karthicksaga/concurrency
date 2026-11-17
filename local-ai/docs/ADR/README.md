@@ -16,3 +16,4 @@ The blueprint was approved on 2026-11-17: ADRs 0001–0010 are **Accepted**. ADR
 | [0009](0009-memory-separate-from-knowledge.md) | Agent memory is separate from knowledge, approval by default |
 | [0010](0010-isolated-web-prototype.md) | Dependency-free web prototype, isolated from the Android codebase |
 | [0011](0011-lite-mode-and-min-sdk-26.md) | Lite mode for 4 GB / 6 GB phones and minSdk 26 (Accepted) |
+| [0012](0012-milestone-2-4-implementation-choices.md) | Implementation choices for agents, knowledge, tools, memory and workflows (Accepted) |

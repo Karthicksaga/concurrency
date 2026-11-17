@@ -21,6 +21,8 @@ import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material.icons.outlined.MonitorHeart
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -130,6 +132,7 @@ fun HomeScreen(nav: NavController, vm: HomeViewModel = hiltViewModel()) {
                 Text("Everything here runs on this phone", color = La.colors.text3, fontSize = 12.sp)
             }
             IconButton(onClick = { nav.navigate("monitor") }) { Icon(Icons.Outlined.MonitorHeart, "Performance", tint = La.colors.text2) }
+            IconButton(onClick = { nav.navigate("settings") }) { Icon(Icons.Outlined.Settings, "Settings", tint = La.colors.text2) }
         }
 
         LaCard {
@@ -167,8 +170,8 @@ fun HomeScreen(nav: NavController, vm: HomeViewModel = hiltViewModel()) {
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             QuickAction(Icons.AutoMirrored.Outlined.Chat, "New chat", Modifier.weight(1f)) { scope.launch { nav.navigate("chat/${vm.newChat()}") } }
+            QuickAction(Icons.Outlined.AccountTree, "Workflow", Modifier.weight(1f)) { nav.navigate("workflow") }
             QuickAction(Icons.Outlined.Memory, "Models", Modifier.weight(1f)) { nav.goTab("models") }
-            QuickAction(Icons.Outlined.MonitorHeart, "Performance", Modifier.weight(1f)) { nav.navigate("monitor") }
         }
 
         LaCard {
@@ -207,7 +210,7 @@ fun HomeScreen(nav: NavController, vm: HomeViewModel = hiltViewModel()) {
         SectionHeader("Recent conversations", "All") { nav.goTab("chats") }
         if (recent.isEmpty()) Text("Your chats will appear here.", color = La.colors.text2, fontSize = 13.sp)
         recent.take(4).forEach { c -> ConversationRow(c) { nav.navigate("chat/${c.id}") } }
-        Text("Agents, knowledge bases and multi-agent workflows arrive in the next milestones.", color = La.colors.text3, fontSize = 12.sp)
+
     }
 }
 

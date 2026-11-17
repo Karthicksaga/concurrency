@@ -14,7 +14,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Memory
-import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.SmartToy
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -60,8 +61,9 @@ private data class Tab(val route: String, val label: String, val icon: ImageVect
 private val TABS = listOf(
     Tab("home", "Home", Icons.Outlined.Home),
     Tab("chats", "Chat", Icons.AutoMirrored.Outlined.Chat),
+    Tab("agents", "Agents", Icons.Outlined.SmartToy),
+    Tab("knowledge", "Knowledge", Icons.AutoMirrored.Outlined.MenuBook),
     Tab("models", "Models", Icons.Outlined.Memory),
-    Tab("settings", "Settings", Icons.Outlined.Settings),
 )
 
 fun androidx.navigation.NavController.goTab(route: String) = navigate(route) {
@@ -111,6 +113,17 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
                     composable("model/{id}") { ModelDetailScreen(nav) }
                     composable("settings") { SettingsScreen(nav) }
                     composable("monitor") { MonitorScreen(nav) }
+                    composable("agents") { com.localai.app.feature.agents.AgentsScreen(nav) }
+                    composable("agent/{id}") { com.localai.app.feature.agents.AgentDetailScreen(nav) }
+                    composable("agentEdit/{id}") { com.localai.app.feature.agents.AgentFormScreen(nav) }
+                    composable("memory/{agentId}") { com.localai.app.feature.agents.MemoryScreen(nav) }
+                    composable("tools") { com.localai.app.feature.tools.ToolsScreen(nav) }
+                    composable("knowledge") { com.localai.app.feature.knowledge.KnowledgeScreen(nav) }
+                    composable("kbNew") { com.localai.app.feature.knowledge.KbFormScreen(nav) }
+                    composable("kb/{id}") { com.localai.app.feature.knowledge.KbDetailScreen(nav) }
+                    composable("doc/{id}") { com.localai.app.feature.knowledge.DocumentScreen(nav) }
+                    composable("workflow") { com.localai.app.feature.workflow.WorkflowScreen(nav) }
+                    composable("workflow/{runId}") { com.localai.app.feature.workflow.WorkflowScreen(nav) }
                 }
             }
         }

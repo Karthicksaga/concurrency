@@ -99,5 +99,8 @@ dependencies {
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
     implementation(libs.coroutines.android)
+    implementation(libs.pdfbox.android)
+    implementation(libs.androidx.documentfile)
     testImplementation(libs.junit)
+    testImplementation(libs.org.json)
 }

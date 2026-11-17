@@ -16,4 +16,4 @@ cmake -S "$HERE" -B "$WORK/cmake" -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLAMA_SR
 cmake --build "$WORK/cmake" -j"$(nproc 2>/dev/null || echo 4)"
 cp "$WORK/cmake/liblocalai.so" "$WORK/cmake/bin/"
 javac -d "$WORK/classes" "$HERE/java/com/localai/app/runtime/inference/LlamaNative.java" "$HERE/java/HostTest.java"
-LD_LIBRARY_PATH="$WORK/cmake/bin" java -cp "$WORK/classes" HostTest "$WORK/cmake/bin" "$MODEL"
+LD_LIBRARY_PATH="$WORK/cmake/bin" java -cp "$WORK/classes" HostTest "$WORK/cmake/bin" "$MODEL" "${@:2}"

@@ -1,6 +1,6 @@
 # LOCAL AI — Product Blueprint, Prototype and Android App
 
-**Status (2026-11-17):** Blueprint **approved**. Implementation has started with **Milestone 1** (on-device inference, model manager, chat) plus **Lite mode for 4 GB and 6 GB phones** — see [`android/`](android/README.md).
+**Status (2026-11-17):** Blueprint **approved**. The Android app now implements all screens: on-device inference, models, chat with cited sources, Agent Studio, tools, agent memory, knowledge bases (local RAG) and supervisor workflows, plus **Lite mode for 4 GB and 6 GB phones**. See [`android/`](android/README.md).
 
 **Try it on your phone:** every push that changes `local-ai/android/` builds a test APK with GitHub Actions and publishes it as the **`local-ai-latest`** pre-release on the repository's Releases page. Open that page on the phone, download `LocalAI-0.1.N.apk` and install it (Android 8.0+, 64-bit ARM).
 

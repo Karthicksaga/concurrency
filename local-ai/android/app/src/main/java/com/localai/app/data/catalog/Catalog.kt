@@ -21,6 +21,9 @@ data class ModelSpec(
     val url: String? = null,
     val sha256: String? = null,
     val fileName: String,
+    val purpose: String = "gen",          // gen | embed
+    val queryPrefix: String = "",
+    val passagePrefix: String = "",
 )
 
 /**
@@ -75,9 +78,22 @@ object Catalog {
             "Capable 8B generalist. Best on 16 GB phones.",
             listOf("General", "Large"), hf("bartowski/Meta-Llama-3.1-8B-Instruct-GGUF", "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"),
             "7b064f5842bf9532c91456deda288a1b672397a54fa729aa665952863033557c", "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"),
+        // Embedding models for knowledge bases and agent memory. Each conversion was tested with the
+        // native test harness (local-ai/android/native-test): some public conversions crash or rank badly.
+        ModelSpec("e5-small", "multilingual-e5-small", "E5", 0.12, "Q8_0", 132_439_008, "bert", 512, 12, 12, 32, "MIT",
+            "Default embedding model: about 100 languages, 384 dimensions. Needed for meaning-based search in knowledge bases and memory.",
+            listOf("Embedding", "Multilingual"), hf("TwinSunsLLC/multilingual-e5-small-gguf", "multilingual-e5-small-q8_0.gguf"),
+            "e011debc1208e31bf7b6aebee2d9fc8bd2ca11694a77ed66ac9d0c9d0a877c93", "multilingual-e5-small-q8_0.gguf",
+            purpose = "embed", queryPrefix = "query: ", passagePrefix = "passage: "),
+        ModelSpec("bge-small-en", "bge-small-en-v1.5", "BGE", 0.03, "Q8_0", 36_685_152, "bert", 512, 12, 12, 32, "MIT",
+            "Small English-only embedding model. Fastest indexing; best for 4 GB phones with English documents.",
+            listOf("Embedding", "English", "Lite"), hf("ggml-org/bge-small-en-v1.5-Q8_0-GGUF", "bge-small-en-v1.5-q8_0.gguf"),
+            "f046db1dc724cf4f6f0a0c5917e922823b73eb1d27b8f9a9c2797f7866974804", "bge-small-en-v1.5-q8_0.gguf",
+            purpose = "embed", queryPrefix = "Represent this sentence for searching relevant passages: "),
     )
 
     fun byId(id: String) = models.firstOrNull { it.id == id }
+    fun isEmbedding(id: String?) = id != null && byId(id)?.purpose == "embed"
 }
 
 private const val GIB = 1024.0 * 1024.0 * 1024.0
@@ -91,6 +107,7 @@ enum class Verdict(val label: String) { RUNS_WELL("Runs well"), TIGHT_FIT("Tight
 /** Mirrors docs/MODEL_RUNTIME_DESIGN.md §5–6 and prototype/js/ui.js. */
 object MemoryModel {
     fun estimate(spec: ModelSpec, ctx: Int, kvQ8: Boolean, batch: Int = 512): MemoryEstimate {
+        if (spec.purpose == "embed") return MemoryEstimate(spec.sizeBytes / GIB, 0.0, 0.03, 0.02)
         val bytesPerElem = if (kvQ8) 1.0625 else 2.0
         val kv = 2.0 * spec.layers * ctx * spec.kvHeads * spec.headDim * bytesPerElem / GIB
         val compute = (0.08 + spec.paramsB * 0.025) * (0.5 + 0.5 * batch / 512.0)

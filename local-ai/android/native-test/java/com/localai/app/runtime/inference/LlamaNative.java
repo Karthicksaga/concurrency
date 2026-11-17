@@ -13,5 +13,9 @@ public class LlamaNative {
     public native void unload();
     public native void abort();
     public native int generate(String[] roles, String[] contents, int maxTokens, float temp, float topP, int topK,
-                               float minP, float repeatPenalty, int seed, boolean enableThinking, Callback cb);
+                               float minP, float repeatPenalty, int seed, boolean enableThinking, String grammar, Callback cb);
+    public native String schemaToGrammar(String jsonSchema);
+    public native int loadEmbedder(String path, int nThreads);
+    public native void unloadEmbedder();
+    public native float[][] embed(String[] texts);
 }

@@ -44,6 +44,7 @@ class ModelRepository @Inject constructor(
     fun partFileFor(fileName: String) = File(modelsDir, "$fileName.part")
 
     suspend fun specFor(id: String): ModelSpec? = dao.get(id)?.toSpec() ?: Catalog.byId(id)
+    suspend fun isInstalled(id: String) = dao.get(id) != null
 
     suspend fun registerDownloaded(spec: ModelSpec) {
         dao.upsert(InstalledModelEntity(spec.id, spec.name, spec.family, spec.paramsB, spec.quant, spec.sizeBytes, spec.arch, spec.ctxTrain,
@@ -61,7 +62,8 @@ class ModelRepository @Inject constructor(
 
     /** Loads [id] with the lite-mode policy and the model's saved profile. */
     suspend fun activate(id: String, allowNotRecommended: Boolean = false): Result<Unit> {
-        val entity = dao.get(id) ?: return Result.failure(IllegalStateException("Model is not installed."))
+        val entity = dao.get(id) ?: return Result.failure(IllegalStateException("Model is not installed yet. Finish the download first."))
+        if (Catalog.isEmbedding(id)) return Result.failure(IllegalStateException("${entity.name} is an embedding model for search; choose a chat model."))
         val spec = entity.toSpec()
         val file = fileFor(entity.fileName)
         if (!file.exists()) return Result.failure(IllegalStateException("The model file is missing. Download it again."))

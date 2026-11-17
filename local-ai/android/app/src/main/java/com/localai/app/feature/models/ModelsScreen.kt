@@ -84,7 +84,7 @@ fun ModelsScreen(nav: NavController, vm: ModelsViewModel = hiltViewModel()) {
         if (row.verdict == Verdict.NOT_RECOMMENDED) confirm = row else vm.download(row.spec)
     }
     val rows = ui.rows.filter {
-        when (filter) { "fits" -> it.verdict != Verdict.NOT_RECOMMENDED || it.installed; "installed" -> it.installed || it.download != null; else -> true }
+        when (filter) { "fits" -> it.spec.purpose == "gen" && (it.verdict != Verdict.NOT_RECOMMENDED || it.installed); "installed" -> it.installed || it.download != null; "embed" -> it.spec.purpose == "embed"; else -> true }
     }
     val dev = ui.device
 
@@ -107,7 +107,7 @@ fun ModelsScreen(nav: NavController, vm: ModelsViewModel = hiltViewModel()) {
             } }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("fits" to "Fits this phone", "installed" to "Installed", "all" to "All").forEach { (k, l) ->
+                    listOf("fits" to "Fits this phone", "installed" to "Installed", "embed" to "Embedding", "all" to "All").forEach { (k, l) ->
                         FilterChip(selected = filter == k, onClick = { filter = k }, label = { Text(l) })
                     }
                 }
@@ -148,6 +148,7 @@ fun ModelCard(row: ModelRow, onOpen: () -> Unit, onDownload: () -> Unit, onPause
             when {
                 row.loaded -> StatusPill("Loaded", Tone.OK)
                 row.active -> StatusPill("Active", Tone.RUN)
+                row.installed && s.purpose == "embed" -> StatusPill("Ready for search", Tone.OK)
                 row.installed -> FilledTonalButton(onClick = onUse, contentPadding = PaddingValues(horizontal = 14.dp)) { Text("Use") }
                 row.download == null -> Button(onClick = onDownload, contentPadding = PaddingValues(horizontal = 12.dp)) {
                     Icon(Icons.Outlined.Download, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text(fmtBytes(s.sizeBytes))

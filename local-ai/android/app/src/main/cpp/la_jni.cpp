@@ -8,6 +8,7 @@
 #include <android/log.h>
 
 #include <atomic>
+#include <cmath>
 #include <chrono>
 #include <mutex>
 #include <string>
@@ -17,6 +18,7 @@
 #include "ggml-backend.h"
 #include "common.h"
 #include "chat.h"
+#include "json-schema-to-grammar.h"
 
 #define TAG "LocalAI-native"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
@@ -32,6 +34,11 @@ common_chat_templates_ptr g_tmpls;
 std::vector<llama_token>  g_cache;   // tokens currently held in the KV cache (sequence 0)
 std::atomic<bool>         g_abort{false};
 int                       g_n_batch = 512;
+
+// Embedding model: a second, small context (docs/KNOWLEDGE_ENGINE_DESIGN.md §4).
+std::mutex                g_emu;
+llama_model *             g_emodel = nullptr;
+llama_context *           g_ectx   = nullptr;
 
 constexpr int ST_OK = 0, ST_LENGTH = 1, ST_ABORTED = 2;
 constexpr int ERR_NO_MODEL = -1, ERR_OVERFLOW = -2, ERR_TEMPLATE = -3, ERR_DECODE = -4;
@@ -173,7 +180,8 @@ JNIEXPORT jint JNICALL
 Java_com_localai_app_runtime_inference_LlamaNative_generate(JNIEnv * env, jobject, jobjectArray jroles,
                                                             jobjectArray jcontents, jint maxTokens, jfloat temp,
                                                             jfloat topP, jint topK, jfloat minP, jfloat repeatPenalty,
-                                                            jint seed, jboolean enableThinking, jobject callback) {
+                                                            jint seed, jboolean enableThinking, jstring jgrammar,
+                                                            jobject callback) {
     std::lock_guard<std::mutex> lock(g_mu);
     g_abort.store(false);
     if (!g_model || !g_ctx) return ERR_NO_MODEL;
@@ -239,6 +247,13 @@ Java_com_localai_app_runtime_inference_LlamaNative_generate(JNIEnv * env, jobjec
     const llama_vocab * vocab = llama_model_get_vocab(g_model);
     llama_sampler_chain_params sp = llama_sampler_chain_default_params();
     llama_sampler * smpl = llama_sampler_chain_init(sp);
+    // Grammar-constrained output (plans, tool calls): only tokens that keep the JSON valid can be sampled.
+    const std::string grammar = jgrammar ? jstr(env, jgrammar) : std::string();
+    if (!grammar.empty()) {
+        llama_sampler * g = llama_sampler_init_grammar(vocab, grammar.c_str(), "root");
+        if (!g) { llama_sampler_free(smpl); LOGE("invalid grammar"); return ERR_TEMPLATE; }
+        llama_sampler_chain_add(smpl, g);
+    }
     // top-k first: the repetition penalty is slow on the full vocabulary (see llama.h)
     llama_sampler_chain_add(smpl, llama_sampler_init_top_k(topK > 0 ? topK : 64));
     llama_sampler_chain_add(smpl, llama_sampler_init_penalties(llama_vocab_n_tokens(vocab), 64, repeatPenalty, 0.0f, 0.0f));
@@ -284,6 +299,72 @@ Java_com_localai_app_runtime_inference_LlamaNative_generate(JNIEnv * env, jobjec
     env->CallVoidMethod(callback, onDone, static_cast<jint>(toks.size() - keep), static_cast<jint>(keep), n_gen, ms(t0, t1), ms(t1, t2));
     if (env->ExceptionCheck()) env->ExceptionClear();
     return status;
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_localai_app_runtime_inference_LlamaNative_schemaToGrammar(JNIEnv * env, jobject, jstring jschema) {
+    try {
+        return env->NewStringUTF(json_schema_to_grammar(common_json::parse(jstr(env, jschema)), true).c_str());
+    } catch (const std::exception & e) {
+        LOGE("schema conversion failed: %s", e.what());
+        return env->NewStringUTF("");
+    }
+}
+
+JNIEXPORT jint JNICALL
+Java_com_localai_app_runtime_inference_LlamaNative_loadEmbedder(JNIEnv * env, jobject, jstring jpath, jint nThreads) {
+    std::lock_guard<std::mutex> lock(g_emu);
+    if (g_ectx) { llama_free(g_ectx); g_ectx = nullptr; }
+    if (g_emodel) { llama_model_free(g_emodel); g_emodel = nullptr; }
+    const std::string path = jstr(env, jpath);
+    llama_model_params mp = llama_model_default_params();
+    mp.n_gpu_layers = 0;
+    mp.load_mode = LLAMA_LOAD_MODE_MMAP;
+    g_emodel = llama_model_load_from_file(path.c_str(), mp);
+    if (!g_emodel) return -1;
+    llama_context_params cp = llama_context_default_params();
+    cp.n_ctx = 512; cp.n_batch = 512; cp.n_ubatch = 512;
+    cp.n_threads = nThreads; cp.n_threads_batch = nThreads;
+    cp.embeddings = true;
+    g_ectx = llama_init_from_model(g_emodel, cp);
+    if (!g_ectx) { llama_model_free(g_emodel); g_emodel = nullptr; return -2; }
+    return llama_model_n_embd_out(g_emodel);
+}
+
+JNIEXPORT void JNICALL
+Java_com_localai_app_runtime_inference_LlamaNative_unloadEmbedder(JNIEnv *, jobject) {
+    std::lock_guard<std::mutex> lock(g_emu);
+    if (g_ectx) { llama_free(g_ectx); g_ectx = nullptr; }
+    if (g_emodel) { llama_model_free(g_emodel); g_emodel = nullptr; }
+}
+
+// Returns one L2-normalised vector per input text (texts are truncated to 512 tokens).
+JNIEXPORT jobjectArray JNICALL
+Java_com_localai_app_runtime_inference_LlamaNative_embed(JNIEnv * env, jobject, jobjectArray jtexts) {
+    std::lock_guard<std::mutex> lock(g_emu);
+    if (!g_ectx) return nullptr;
+    const int n_embd = llama_model_n_embd_out(g_emodel);
+    const jsize n = env->GetArrayLength(jtexts);
+    jobjectArray out = env->NewObjectArray(n, env->FindClass("[F"), nullptr);
+    std::vector<float> v(n_embd);
+    for (jsize i = 0; i < n; ++i) {
+        auto toks = common_tokenize(g_ectx, jstr(env, (jstring) env->GetObjectArrayElement(jtexts, i)), true, false);
+        if (toks.size() > 512) { const auto last = toks.back(); toks.resize(511); toks.push_back(last); }
+        if (toks.empty()) continue;
+        if (llama_memory_t m = llama_get_memory(g_ectx)) llama_memory_clear(m, true);
+        if (llama_decode(g_ectx, llama_batch_get_one(toks.data(), (int) toks.size())) != 0) { LOGE("embed decode failed"); continue; }
+        const float * e = llama_get_embeddings_seq(g_ectx, 0);
+        if (!e) e = llama_get_embeddings_ith(g_ectx, -1);
+        if (!e) continue;
+        double norm = 0; for (int k = 0; k < n_embd; ++k) norm += (double) e[k] * e[k];
+        const float inv = norm > 0 ? (float) (1.0 / std::sqrt(norm)) : 0.f;
+        for (int k = 0; k < n_embd; ++k) v[k] = e[k] * inv;
+        jfloatArray arr = env->NewFloatArray(n_embd);
+        env->SetFloatArrayRegion(arr, 0, n_embd, v.data());
+        env->SetObjectArrayElement(out, i, arr);
+        env->DeleteLocalRef(arr);
+    }
+    return out;
 }
 
 } // extern "C"

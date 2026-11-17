@@ -19,4 +19,10 @@ object AppModule {
 
     @Provides fun modelDao(db: AppDatabase) = db.models()
     @Provides fun chatDao(db: AppDatabase) = db.chats()
+    @Provides fun agentDao(db: AppDatabase) = db.agents()
+    @Provides fun knowledgeDao(db: AppDatabase) = db.knowledge()
+    @Provides fun memoryDao(db: AppDatabase) = db.memory()
+    @Provides fun noteDao(db: AppDatabase) = db.notes()
+    @Provides fun toolCallDao(db: AppDatabase) = db.toolCalls()
+    @Provides fun runDao(db: AppDatabase) = db.runs()
 }

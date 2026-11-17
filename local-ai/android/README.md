@@ -1,6 +1,6 @@
-# LOCAL AI — Android app (Milestone 1 build)
+# LOCAL AI — Android app
 
-Native Kotlin + Jetpack Compose app that runs GGUF language models **on the phone** with llama.cpp. This is the first implementation milestone from `../docs/IMPLEMENTATION_ROADMAP.md`: foundation, model manager and chat, plus **Lite mode** for 4 GB and 6 GB phones.
+Native Kotlin + Jetpack Compose app that runs GGUF language models **on the phone** with llama.cpp: model manager, chat, Agent Studio, tools, agent memory, knowledge bases with local search (RAG) and supervisor multi-agent workflows, plus **Lite mode** for 4 GB and 6 GB phones. Implementation notes: `../docs/ADR/0012-milestone-2-4-implementation-choices.md`.
 
 ## Install on your phone
 
@@ -26,8 +26,13 @@ The APK is signed with a **public test key** committed in `app/debug-release.key
 | KV-cache reuse between turns, automatic trimming of old turns when the context is full | ✅ |
 | Hidden reasoning for "thinking" models (toggle in Settings) | ✅ |
 | Performance screen: tok/s, free RAM, app memory, thermal status, battery, CPU features | ✅ |
-| Agents, tools, knowledge bases (RAG), memory, multi-agent workflows | ⏳ Milestones 2–4 (see the prototype for the design) |
-| GPU / NPU acceleration | ⏳ Later (CPU only for now) |
+| **Agent Studio:** 6 templates, create/edit/duplicate/delete, per-agent model, tools, knowledge bases, memory and limits; agent details | ✅ |
+| **Tools:** Calculator, Knowledge Search, Document Reader, Code Search, Note Manager, SQLite Query (read-only), File Search (granted folder); Allow/Ask/Off permissions, permission dialog, audit log | ✅ |
+| **Agent memory:** approval inbox, "Suggest memories" from a chat, pin/edit/delete/forget all, per-agent on/off and auto-save | ✅ |
+| **Knowledge:** knowledge bases (shared or one agent), import PDF/DOCX/TXT/Markdown/code and notes, on-device chunking + embeddings, hybrid search, document details, re-index, notes | ✅ |
+| **Chat with sources:** pick knowledge bases and an agent per chat; answers cite `[n]` with tappable sources; tool calls shown inline | ✅ |
+| **Supervisor workflow:** planner → agent tasks (dependency order, one shared model) → review → aggregate; live graph, retry failed step, cancel, history; also from chat via Agent mode › Supervisor | ✅ |
+| OCR for scanned PDFs, isolated parser process, GPU/NPU | ⏳ Later |
 
 ## Lite mode
 
@@ -55,13 +60,16 @@ The first native build compiles llama.cpp for every ARM CPU variant and takes 15
 ## Tests
 
 ```bash
-./gradlew testReleaseUnitTest          # JVM: device tiers, lite-mode policy, memory verdicts, GGUF reader, reasoning filter
-native-test/run.sh [model.gguf]        # host build of la_jni.cpp + llama.cpp driven through JNI with a real model
+./gradlew testReleaseUnitTest          # JVM (13 tests): tiers, lite policy, verdicts, GGUF reader, calculator, chunker, sources, templates
+native-test/run.sh [model.gguf] [embedder.gguf ...]   # host build of la_jni.cpp + llama.cpp driven through JNI with real models
 ```
 
 `native-test` (last run 2026-11-17 with Qwen3 0.6B Q8_0, lite settings: 2K context, batch 128, q8_0 KV): 13/13 passed —
 correct answers, KV-cache reuse on the second turn (31 tokens), stop/abort mid-generation and recovery, context-overflow error,
 control tokens in user text treated as plain text, intact multi-byte UTF-8, NO_MODEL after unload.
+
+Also verified on host (2026-11-17): grammar-constrained JSON (tool decision picks the calculator for arithmetic; planner emits a valid task list),
+and both embedding models (relevant passage ranks first; multilingual e5 matches a German query to an English passage).
 
 Not yet tested on a physical phone: the UI and on-device speed. Please report what you see (model, phone, tok/s on the Performance screen).
 

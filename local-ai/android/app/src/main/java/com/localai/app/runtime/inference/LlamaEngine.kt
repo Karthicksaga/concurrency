@@ -38,8 +38,12 @@ object LlamaNative {
     external fun abort()
     external fun generate(
         roles: Array<String>, contents: Array<String>, maxTokens: Int, temp: Float, topP: Float, topK: Int,
-        minP: Float, repeatPenalty: Float, seed: Int, enableThinking: Boolean, callback: Callback,
+        minP: Float, repeatPenalty: Float, seed: Int, enableThinking: Boolean, grammar: String?, callback: Callback,
     ): Int
+    external fun schemaToGrammar(jsonSchema: String): String
+    external fun loadEmbedder(path: String, nThreads: Int): Int
+    external fun unloadEmbedder()
+    external fun embed(texts: Array<String>): Array<FloatArray?>?
 }
 
 data class LoadConfig(val contextLength: Int, val threads: Int, val batch: Int, val kvQ8: Boolean)
@@ -96,6 +100,8 @@ class LlamaEngine @Inject constructor(@ApplicationContext private val context: C
     @Volatile private var initialised = false
     var systemInfo: String = ""; private set
 
+    suspend fun ensureNativeInit() { if (!initialised) ensureInit() }
+
     private suspend fun ensureInit() = withContext(dispatcher) {
         if (!initialised) {
             LlamaNative.init(context.applicationInfo.nativeLibraryDir)
@@ -131,7 +137,7 @@ class LlamaEngine @Inject constructor(@ApplicationContext private val context: C
 
     /** Cold flow: collecting starts generation; cancelling the collector aborts native decoding. */
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun generate(turns: List<ChatTurn>, params: SamplingParams): Flow<GenEvent> = channelFlow {
+    fun generate(turns: List<ChatTurn>, params: SamplingParams, grammar: String? = null): Flow<GenEvent> = channelFlow {
         mutex.withLock {
             if (_state.value !is EngineState.Ready) { send(GenEvent.Failed(InferenceError.NO_MODEL)); return@withLock }
             val finished = CompletableDeferred<Unit>()
@@ -145,7 +151,7 @@ class LlamaEngine @Inject constructor(@ApplicationContext private val context: C
                     LlamaNative.generate(
                         turns.map { it.role }.toTypedArray(), turns.map { it.content }.toTypedArray(),
                         params.maxTokens, params.temperature, params.topP, params.topK, params.minP, params.repeatPenalty,
-                        params.seed, params.enableThinking,
+                        params.seed, params.enableThinking, grammar,
                         object : LlamaNative.Callback {
                             override fun onToken(utf8: ByteArray) { trySendBlocking(GenEvent.Delta(String(utf8, Charsets.UTF_8))) }
                             override fun onDone(promptTokens: Int, reusedTokens: Int, generatedTokens: Int, promptMs: Long, genMs: Long) {
@@ -171,4 +177,45 @@ class LlamaEngine @Inject constructor(@ApplicationContext private val context: C
             }
         }
     }
+}
+
+
+/** Collects a whole (usually grammar-constrained) completion. Returns null on failure or abort. */
+suspend fun LlamaEngine.complete(turns: List<ChatTurn>, params: SamplingParams, grammar: String? = null): String? {
+    val sb = StringBuilder(); var ok = true
+    generate(turns, params, grammar).collect { e ->
+        when (e) { is GenEvent.Delta -> sb.append(e.text); is GenEvent.Failed -> ok = false; is GenEvent.Done -> if (e.reason == StopReason.ABORTED) ok = false }
+    }
+    return if (ok) sb.toString() else null
+}
+
+/** Grammars are cached: converting a schema is cheap but happens on every agent step. */
+object Grammars {
+    private val cache = HashMap<String, String>()
+    @Synchronized fun fromSchema(schema: String): String = cache.getOrPut(schema) { LlamaNative.schemaToGrammar(schema) }
+}
+
+/** Small embedding model in its own context (docs/KNOWLEDGE_ENGINE_DESIGN.md §4). */
+@Singleton
+class EmbeddingEngine @Inject constructor(@ApplicationContext private val context: Context, private val engine: LlamaEngine) {
+    private val dispatcher = Executors.newSingleThreadExecutor { r -> Thread(r, "embedder") }.asCoroutineDispatcher()
+    private val mutex = Mutex()
+    @Volatile var loadedPath: String? = null; private set
+    var dim: Int = 0; private set
+
+    suspend fun ensure(file: File, threads: Int): Boolean = mutex.withLock {
+        engine.ensureNativeInit()
+        if (loadedPath == file.absolutePath) return@withLock true
+        withContext(dispatcher) {
+            val d = LlamaNative.loadEmbedder(file.absolutePath, threads)
+            if (d > 0) { dim = d; loadedPath = file.absolutePath; true } else { loadedPath = null; false }
+        }
+    }
+
+    suspend fun embed(texts: List<String>): List<FloatArray?> = mutex.withLock {
+        if (loadedPath == null) return@withLock texts.map { null }
+        withContext(dispatcher) { LlamaNative.embed(texts.toTypedArray())?.toList() ?: texts.map { null } }
+    }
+
+    suspend fun unload() = mutex.withLock { withContext(dispatcher) { LlamaNative.unloadEmbedder() }; loadedPath = null }
 }

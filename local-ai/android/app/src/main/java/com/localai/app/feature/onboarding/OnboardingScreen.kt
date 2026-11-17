@@ -123,7 +123,7 @@ fun OnboardingScreen(onDone: () -> Unit, vm: OnboardingViewModel = hiltViewModel
                     Eyebrow("First model")
                     Text("Pick a starter model", style = MaterialTheme.typography.headlineSmall)
                     Text("Recommended for your ${dev.tier.label} phone. You can add more later.", color = La.colors.text2)
-                    val options = ui.rows.filter { !it.spec.id.startsWith("import") && it.verdict == Verdict.RUNS_WELL }
+                    val options = ui.rows.filter { it.spec.purpose == "gen" && !it.spec.id.startsWith("import") && it.verdict == Verdict.RUNS_WELL }
                         .sortedWith(compareByDescending<com.localai.app.feature.models.ModelRow> { it.recommended }.thenBy { it.spec.sizeBytes }).take(4)
                     if (pick == null) pick = options.firstOrNull()?.spec?.id
                     options.forEach { r ->
