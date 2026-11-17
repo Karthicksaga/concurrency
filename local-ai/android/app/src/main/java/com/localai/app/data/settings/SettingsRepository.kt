@@ -45,6 +45,7 @@ data class AppSettings(
     val voiceLanguage: String = "",       // BCP-47 tag, "" = phone language
     val speechRate: Float = 1.0f,
     val readAloud: Boolean = false,       // speak every reply in normal chat
+    val ocrLanguages: String = "",        // extra text-recognition languages (csv of tessdata codes); English is always on
 )
 
 data class ModelProfile(val contextLength: Int, val temperature: Float, val topP: Float)
@@ -87,6 +88,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         val voiceLang = stringPreferencesKey("voice_lang")
         val speechRate = floatPreferencesKey("speech_rate")
         val readAloud = booleanPreferencesKey("read_aloud")
+        val ocrLangs = stringPreferencesKey("ocr_langs")
         fun ctx(id: String) = intPreferencesKey("ctx_$id")
         fun temp(id: String) = floatPreferencesKey("temp_$id")
         fun topP(id: String) = floatPreferencesKey("topp_$id")
@@ -112,6 +114,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
             voiceLanguage = p[K.voiceLang] ?: "",
             speechRate = p[K.speechRate] ?: 1.0f,
             readAloud = p[K.readAloud] ?: false,
+            ocrLanguages = p[K.ocrLangs] ?: "",
         )
     }
 
@@ -131,6 +134,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         it[K.digestOn] = on; it[K.digestHour] = hour; it[K.digestMinute] = minute; it[K.digestEmail] = email.trim(); it[K.digestSms] = sms
     }
     suspend fun setFolderSync(v: Boolean) = edit { it[K.folderSync] = v }
+    suspend fun setOcrLanguages(codes: Collection<String>) = edit { it[K.ocrLangs] = codes.filter { c -> c != "eng" }.distinct().joinToString(",") }
     suspend fun setVoice(language: String, rate: Float, readAloud: Boolean) = edit {
         it[K.voiceLang] = language; it[K.speechRate] = rate.coerceIn(0.5f, 2f); it[K.readAloud] = readAloud
     }

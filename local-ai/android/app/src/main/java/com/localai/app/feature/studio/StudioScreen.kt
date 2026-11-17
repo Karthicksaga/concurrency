@@ -181,7 +181,7 @@ fun StudioScreen(nav: NavController, vm: StudioViewModel = hiltViewModel()) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             when (vm.tab) {
                 0 -> WriteTab(vm)
-                1 -> ConvertTab(vm) { pickDoc.launch(arrayOf("application/pdf", DocFormat.DOCX.mime, "text/*", "application/octet-stream")) }
+                1 -> ConvertTab(vm) { pickDoc.launch(arrayOf("application/pdf", DocFormat.DOCX.mime, "image/*", "text/*", "application/octet-stream")) }
                 else -> FilesTab(files, vm, shareFile, saveToPhone)
             }
         }
@@ -237,7 +237,7 @@ private fun ConvertTab(vm: StudioViewModel, pick: () -> Unit) {
     val src = vm.source
     LaCard {
         Text("1 · Choose a file", fontWeight = FontWeight.SemiBold)
-        Text("Word (.docx), PDF (with a text layer), Markdown or text.", fontSize = 12.sp, color = La.colors.text3)
+        Text("Word (.docx), PDF (scanned PDFs too), a photo of a page, Markdown or text. Photos and scans are read with on-device text recognition.", fontSize = 12.sp, color = La.colors.text3)
         Spacer(Modifier.height(8.dp))
         if (src == null) Button(onClick = pick, enabled = !vm.busy) { Text("Choose file") }
         else Row(verticalAlignment = Alignment.CenterVertically) {

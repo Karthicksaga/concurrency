@@ -24,6 +24,9 @@ import androidx.compose.material.icons.outlined.MonitorHeart
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.GppMaybe
+import androidx.compose.material.icons.outlined.RecordVoiceOver
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material3.FilledTonalButton
@@ -183,8 +186,13 @@ fun HomeScreen(nav: NavController, vm: HomeViewModel = hiltViewModel()) {
             QuickAction(Icons.Outlined.PhotoCamera, "Ask a photo", Modifier.weight(1f)) { scope.launch { nav.navigate("chat/${vm.newChat()}?attach=1") } }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            QuickAction(Icons.Outlined.GppMaybe, "Scam check", Modifier.weight(1f)) { nav.navigate("scam") }
+            QuickAction(Icons.Outlined.RecordVoiceOver, "Read to me", Modifier.weight(1f)) { nav.navigate("read") }
             QuickAction(Icons.Outlined.Description, "Documents", Modifier.weight(1f)) { nav.navigate("studio") }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             QuickAction(Icons.Outlined.AccountTree, "Workflow", Modifier.weight(1f)) { nav.navigate("workflow") }
+            QuickAction(Icons.AutoMirrored.Outlined.MenuBook, "Knowledge", Modifier.weight(1f)) { nav.goTab("knowledge") }
             QuickAction(Icons.Outlined.Memory, "Models", Modifier.weight(1f)) { nav.goTab("models") }
         }
 

@@ -39,7 +39,10 @@ The APK is signed with a **public test key** committed in `app/debug-release.key
 | **Photos:** take a photo or pick one in chat ("Ask a photo" on Home) and ask about it; vision models SmolVLM 500M (4–6 GB phones), SmolVLM2 2.2B, Qwen2.5-VL 3B, Gemma 3 4B; image encoder downloaded and verified with the model | ✅ |
 | **Voice:** dictate in chat, read any answer aloud, hands-free voice conversation (listen → answer → speak while writing → listen; tap to interrupt); voice language and speed; on-device speech recognizer when the phone has one | ✅ |
 | **Document Studio:** write reports, letters, emails, minutes, resumes, essays and proposals with AI → PDF or Word; convert Word → PDF, PDF → Word, Markdown/text → either, optionally fixing, summarizing, translating, formalizing or simplifying with AI; save any chat answer as PDF/Word; open, share or save to phone | ✅ |
-| OCR for scanned PDFs, images inside Word files, whisper.cpp speech, isolated parser process, GPU/NPU, Gmail sign-in (OAuth) | ⏳ Later |
+| **Text recognition (OCR):** offline Tesseract; English built in, Hindi/Tamil/Telugu/Kannada/Malayalam/Bengali/Marathi downloadable (Settings › Text recognition); used for chat photos (text-only models can answer about documents), scanned PDFs and photos in Knowledge, scan-to-Word/PDF in Documents | ✅ |
+| **Scam check:** paste, screenshot or **Share → Check with LOCAL AI** from any app; on-device rules for Indian frauds (OTP/PIN, KYC, electricity, digital arrest, task jobs, fake links…) + explanation in your language, read aloud; 1930 / Chakshu advice | ✅ |
+| **Read it to me:** photo of a letter, bill, form or medicine label → large text, read aloud as written, or explained simply in your language | ✅ |
+| Images inside Word files, whisper.cpp speech, isolated parser process, GPU/NPU, Gmail sign-in (OAuth) | ⏳ Later |
 
 ## Lite mode
 
@@ -67,8 +70,9 @@ The first native build compiles llama.cpp for every ARM CPU variant and takes 15
 ## Tests
 
 ```bash
-./gradlew testReleaseUnitTest          # JVM (27 tests): tiers, lite policy, verdicts, GGUF reader, calculator, chunker, sources, templates, email,
-                                       #   Markdown/Word round trip, document chunking, speech sentence streaming, photo scope, image packing
+./gradlew testReleaseUnitTest          # JVM (32 tests): tiers, lite policy, verdicts, GGUF reader, calculator, chunker, sources, templates, email,
+                                       #   Markdown/Word round trip, document chunking, speech sentence streaming, photo scope, image packing,
+                                       #   scam rules (English/Tamil/Hindi, genuine messages), OCR cleanup
 native-test/run.sh [model.gguf] [embedder.gguf ...]   # host build of la_jni.cpp + llama.cpp driven through JNI with real models
 ```
 

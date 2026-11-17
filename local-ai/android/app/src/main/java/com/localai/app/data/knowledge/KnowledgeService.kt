@@ -209,7 +209,10 @@ class KnowledgeService @Inject constructor(
         try {
             dao.setStatus(d.id, "EXTRACTING", 0.05f)
             val kind = DocKind.valueOf(d.kind)
-            val extracted = withContext(Dispatchers.IO) { TextExtractor.extract(context, File(d.storedPath), kind) }
+            val st = settings.current()
+            val ocrLangs = com.localai.app.data.ocr.OcrPacks.spec(st.ocrLanguages.split(','), { com.localai.app.data.ocr.Ocr.isInstalled(context, it) })
+            val maxOcr = if (policyFor(st, device.profile).lite) 20 else 60
+            val extracted = withContext(Dispatchers.IO) { TextExtractor.extract(context, File(d.storedPath), kind, ocrLangs, maxOcr) }
             val chunks = Chunker.chunk(extracted.sections, kind, kb.chunkSize, kb.chunkOverlap)
             if (chunks.isEmpty()) throw ExtractionException("No text found in this document.")
             dao.deleteChunks(d.id)

@@ -75,12 +75,12 @@ fun androidx.navigation.NavController.goTab(route: String) = navigate(route) {
 }
 
 @Composable
-fun AppRoot(openChat: kotlinx.coroutines.flow.MutableStateFlow<String?>, vm: RootViewModel = hiltViewModel()) {
+fun AppRoot(openChat: kotlinx.coroutines.flow.MutableStateFlow<String?>, openRoute: kotlinx.coroutines.flow.MutableStateFlow<String?>, vm: RootViewModel = hiltViewModel()) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     // Launch animation once per app start (not on rotation); the app loads underneath it.
     var splash by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(true) }
     Box(Modifier.fillMaxSize()) {
-        settings?.let { AppContent(openChat, it) }
+        settings?.let { AppContent(openChat, openRoute, it) }
         androidx.compose.animation.AnimatedVisibility(splash, enter = androidx.compose.animation.EnterTransition.None,
             exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(420)) +
                 androidx.compose.animation.scaleOut(androidx.compose.animation.core.tween(420), targetScale = 1.04f)) {
@@ -90,8 +90,9 @@ fun AppRoot(openChat: kotlinx.coroutines.flow.MutableStateFlow<String?>, vm: Roo
 }
 
 @Composable
-private fun AppContent(openChat: kotlinx.coroutines.flow.MutableStateFlow<String?>, s: AppSettings) {
+private fun AppContent(openChat: kotlinx.coroutines.flow.MutableStateFlow<String?>, openRoute: kotlinx.coroutines.flow.MutableStateFlow<String?>, s: AppSettings) {
     val pendingChat by openChat.collectAsStateWithLifecycle()
+    val pendingRoute by openRoute.collectAsStateWithLifecycle()
     val dark = when (s.theme) { ThemeMode.DARK -> true; ThemeMode.LIGHT -> false; ThemeMode.SYSTEM -> isSystemInDarkTheme() }
     val activity = LocalContext.current as? ComponentActivity
     LaunchedEffect(dark) {
@@ -105,6 +106,7 @@ private fun AppContent(openChat: kotlinx.coroutines.flow.MutableStateFlow<String
         val route = entry?.destination?.route
         val showBar = route in TABS.map { it.route }
         LaunchedEffect(pendingChat, s.onboarded) { val id = pendingChat; if (id != null && s.onboarded) { nav.navigate("chat/$id"); openChat.value = null } }
+        LaunchedEffect(pendingRoute, s.onboarded) { val r = pendingRoute; if (r != null && s.onboarded) { nav.navigate(r) { launchSingleTop = true }; openRoute.value = null } }
         Scaffold(
             containerColor = La.colors.bg,
             bottomBar = {
@@ -128,6 +130,9 @@ private fun AppContent(openChat: kotlinx.coroutines.flow.MutableStateFlow<String
                     composable("chat/{id}?attach={attach}", arguments = listOf(navArgument("attach") { defaultValue = "0" })) { ChatScreen(nav) }
                     composable("voice/{id}") { com.localai.app.feature.voice.VoiceScreen(nav) }
                     composable("studio") { com.localai.app.feature.studio.StudioScreen(nav) }
+                    composable("scam") { com.localai.app.feature.helpers.ScamScreen(nav) }
+                    composable("read") { com.localai.app.feature.helpers.ReadScreen(nav) }
+                    composable("share") { com.localai.app.feature.helpers.ShareScreen(nav) }
                     composable("models") { ModelsScreen(nav) }
                     composable("model/{id}") { ModelDetailScreen(nav) }
                     composable("settings") { SettingsScreen(nav) }

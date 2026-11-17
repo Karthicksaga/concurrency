@@ -607,7 +607,7 @@ private fun PendingPhoto(path: String, onRemove: () -> Unit) {
         }
         Column(Modifier.weight(1f).padding(start = 10.dp)) {
             Text("Photo attached", fontSize = 13.sp, fontWeight = FontWeight.Medium)
-            Text("Ask about it, or just send. Needs a vision model.", fontSize = 11.5.sp, color = La.colors.text3)
+            Text("Ask about it, or just send. Text in the photo is read on the phone.", fontSize = 11.5.sp, color = La.colors.text3)
         }
         IconButton(onClick = onRemove) { Icon(Icons.Outlined.Close, "Remove photo", tint = La.colors.text2) }
     }

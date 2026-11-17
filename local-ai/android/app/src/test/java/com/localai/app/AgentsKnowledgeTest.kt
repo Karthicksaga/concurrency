@@ -38,7 +38,8 @@ class AgentsKnowledgeTest {
         assertEquals(DocKind.CODE, kindFor("ChatViewModel.kt", null))
         assertEquals(DocKind.MARKDOWN, kindFor("notes.md", null))
         assertEquals(DocKind.TEXT, kindFor("readme", "text/plain"))
-        assertEquals(null, kindFor("photo.jpg", "image/jpeg"))
+        assertEquals(DocKind.IMAGE, kindFor("photo.jpg", "image/jpeg"))   // read with on-device OCR (ADR-0016)
+        assertEquals(null, kindFor("song.mp3", "audio/mpeg"))
     }
 
     @Test fun chunkerRespectsSizeAndKeepsLocations() {

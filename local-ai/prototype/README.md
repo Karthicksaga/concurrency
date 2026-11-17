@@ -1,6 +1,6 @@
 # LOCAL AI — Interactive UI Prototype
 
-A clickable, high-fidelity prototype of all 20 screens of the LOCAL AI Android app. It is plain HTML, CSS and JavaScript with **no build step and no dependencies**, and it is deliberately isolated from the future Android codebase (see `docs/ADR/0010-isolated-web-prototype.md`).
+A clickable, high-fidelity prototype of all 22 screens of the LOCAL AI Android app. It is plain HTML, CSS and JavaScript with **no build step and no dependencies**, and it is deliberately isolated from the future Android codebase (see `docs/ADR/0010-isolated-web-prototype.md`).
 
 > Everything runs on **mock data**. There is no model inference, download, embedding, database or agent execution. Simulated elements are labelled "Sample data" or "Simulated" in the UI.
 
@@ -48,6 +48,8 @@ node local-ai/prototype/tools/bundle.mjs /tmp/local-ai-prototype.html
 | **Document Studio**: write a letter or report with AI and save as PDF/Word; convert Word → PDF with Translate (try Tamil); open, share and delete files | Home › Documents |
 | Voice language, speaking speed and "Read replies aloud" | Settings › Voice |
 | **Launch animation** (chip assembles, core lights up, wordmark) | Every page load |
+| **Scam check** with the app's real rules: try the samples (KYC SMS, Tamil electricity message, task job, a genuine bank OTP) or paste any message; switch the explanation to Tamil or Hindi | Home › Scam check |
+| **Read it to me**: pick the electricity bill photo, read the text, hear the simple explanation in Hindi or Tamil; large text | Home › Read to me |
 
 Changes persist in your browser's local storage. **Settings › Prototype › Restore demo data** resets everything.
 
@@ -79,4 +81,4 @@ node local-ai/prototype/tests/smoke.mjs            # with screenshots (2× scale
 node local-ai/prototype/tests/smoke.mjs --no-shots # faster
 ```
 
-Requires Playwright with Chromium (`npm i -D playwright && npx playwright install chromium` if not already available). The suite visits all 20 screens at phone width (412 px), fails on horizontal overflow or console errors, and exercises the interactions listed above (45 checks, all passing on 2026-11-17).
+Requires Playwright with Chromium (`npm i -D playwright && npx playwright install chromium` if not already available). The suite visits all 22 screens at phone width (412 px), fails on horizontal overflow or console errors, and exercises the interactions listed above (49 checks, all passing on 2026-11-17).

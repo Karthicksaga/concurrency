@@ -79,7 +79,7 @@ enum class InferenceError(val message: String) {
     CONTEXT_OVERFLOW("The conversation is longer than the model's context window."),
     TEMPLATE("This model's chat template could not be applied."),
     DECODE("The model failed while processing the prompt. Try a shorter context or another model."),
-    NO_VISION("This model can't see images. In Models, install and use a vision model such as SmolVLM 500M (vision)."),
+    NO_VISION("This model can't see images, and no text was found in the photo. For photos of things (not documents), use a vision model such as SmolVLM 500M (vision) from Models."),
 }
 
 sealed interface EngineState {

@@ -14,11 +14,11 @@ import java.io.File
 import java.util.UUID
 
 /**
- * Photos attached to chats. Stored app-private (filesDir/chat_images) as JPEG ≤ 1280 px with EXIF rotation applied,
+ * Photos attached to chats. Stored app-private (filesDir/chat_images) as JPEG ≤ 2048 px with EXIF rotation applied,
  * then converted to packed RGB at the model's input size only when a message is answered.
  */
 object Images {
-    private const val STORE_MAX = 1280
+    private const val STORE_MAX = 2048          // high enough for on-device text recognition of a document photo
 
     fun dir(context: Context) = File(context.filesDir, "chat_images").apply { mkdirs() }
 

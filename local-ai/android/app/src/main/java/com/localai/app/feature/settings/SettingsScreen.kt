@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -69,6 +70,26 @@ class SettingsViewModel @Inject constructor(
     val device = device.profile
     val settings = repo.settings.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     fun set(block: suspend SettingsRepository.() -> Unit) = viewModelScope.launch { repo.block() }
+
+    // ---- text recognition language packs ----
+    val ocrProgress = androidx.compose.runtime.mutableStateMapOf<String, Float>()
+    var ocrVersion by androidx.compose.runtime.mutableIntStateOf(0); private set
+    var ocrError by androidx.compose.runtime.mutableStateOf<String?>(null)
+    fun ocrInstalled(code: String) = com.localai.app.data.ocr.Ocr.isInstalled(context, code)
+    fun ocrDownload(code: String) = viewModelScope.launch {
+        ocrError = null; ocrProgress[code] = 0f
+        com.localai.app.data.ocr.Ocr.download(context, code) { p -> ocrProgress[code] = p }
+            .onSuccess { val s = repo.current(); repo.setOcrLanguages(s.ocrLanguages.split(',').filter { it.isNotBlank() } + code) }
+            .onFailure { ocrError = it.message }
+        ocrProgress.remove(code); ocrVersion++
+    }
+    fun ocrToggle(code: String, on: Boolean) = viewModelScope.launch {
+        val cur = repo.current().ocrLanguages.split(',').filter { it.isNotBlank() }
+        repo.setOcrLanguages(if (on) cur + code else cur - code)
+    }
+    fun ocrDelete(code: String) = viewModelScope.launch {
+        com.localai.app.data.ocr.Ocr.delete(context, code); ocrToggle(code, false).join(); ocrVersion++
+    }
     fun eraseAll(onDone: () -> Unit) = viewModelScope.launch {
         engine.unload()
         models.installed.first().forEach { models.delete(it.id) }
@@ -142,6 +163,36 @@ fun SettingsScreen(nav: NavController, vm: SettingsViewModel = hiltViewModel()) 
             TextButton(onClick = { runCatching { ctx.startActivity(android.content.Intent("com.android.settings.TTS_SETTINGS").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) } }) { Text("Text-to-speech settings") }
         }
 
+        SectionHeader("Text recognition")
+        LaCard {
+            Text("Reads text in photos, screenshots and scanned PDFs on the phone (for chat, Scam check, Read it to me, Documents and Knowledge). English is built in; add the languages you read.",
+                fontSize = 12.5.sp, color = La.colors.text2)
+            val active = settings.ocrLanguages.split(',').filter { it.isNotBlank() }.toSet()
+            @Suppress("UNUSED_VARIABLE") val v = vm.ocrVersion
+            com.localai.app.data.ocr.OcrPacks.all.forEach { p ->
+                val installed = vm.ocrInstalled(p.code)
+                val prog = vm.ocrProgress[p.code]
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(p.name, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        Text(when { p.bundled -> "Built in"; prog != null -> "Downloading ${(prog * 100).toInt()}%"; installed -> "Installed · %.1f MB".format(p.sizeBytes / 1e6); else -> "%.1f MB download".format(p.sizeBytes / 1e6) },
+                            fontSize = 12.sp, color = La.colors.text3)
+                    }
+                    when {
+                        p.bundled -> Switch(checked = true, onCheckedChange = null, enabled = false)
+                        prog != null -> androidx.compose.material3.CircularProgressIndicator(progress = { prog }, modifier = Modifier.size(24.dp))
+                        installed -> {
+                            TextButton(onClick = { vm.ocrDelete(p.code) }) { Text("Remove", color = La.colors.text3) }
+                            Switch(checked = p.code in active, onCheckedChange = { vm.ocrToggle(p.code, it) })
+                        }
+                        else -> TextButton(onClick = { vm.ocrDownload(p.code) }) { Text("Download") }
+                    }
+                }
+            }
+            vm.ocrError?.let { Text(it, color = La.colors.bad, fontSize = 12.sp) }
+            Text("Packs come from the Tesseract project (pinned version, checksum-verified). Turn on only what you need: each extra language makes reading a little slower.", fontSize = 11.5.sp, color = La.colors.text3)
+        }
+
         SectionHeader("Daily digest")
         LaCard {
             val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -173,7 +224,7 @@ fun SettingsScreen(nav: NavController, vm: SettingsViewModel = hiltViewModel()) 
         SectionHeader("Downloads & privacy")
         LaCard {
             ToggleRow("Download on Wi-Fi only", "Avoid using mobile data for large model files.", settings.wifiOnly) { v -> vm.set { setWifiOnly(v) } }
-            KeyValue("Internet access", "Model downloads (and your digest email, if turned on)")
+            KeyValue("Internet access", "Model and language-pack downloads (and your digest email, if turned on)")
             KeyValue("Analytics", "None")
             KeyValue("Cloud backup", "Disabled")
         }

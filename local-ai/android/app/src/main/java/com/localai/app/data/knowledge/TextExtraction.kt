@@ -17,7 +17,7 @@ data class Extracted(val sections: List<Section>, val pages: Int?)
 
 class ExtractionException(message: String) : Exception(message)
 
-enum class DocKind { PDF, DOCX, MARKDOWN, CODE, TEXT, NOTE }
+enum class DocKind { PDF, DOCX, MARKDOWN, CODE, TEXT, NOTE, IMAGE }
 
 private val CODE_EXT = setOf("kt", "kts", "java", "py", "js", "ts", "tsx", "jsx", "go", "rs", "c", "h", "cpp", "hpp", "cc", "swift", "m",
     "rb", "php", "cs", "scala", "sql", "sh", "yaml", "yml", "json", "xml", "gradle", "toml", "dart", "lua", "r")
@@ -26,6 +26,7 @@ fun kindFor(name: String, mime: String?): DocKind? {
     val ext = name.substringAfterLast('.', "").lowercase()
     return when {
         ext == "pdf" || mime == "application/pdf" -> DocKind.PDF
+        ext in setOf("jpg", "jpeg", "png", "webp") || mime?.startsWith("image/") == true -> DocKind.IMAGE
         ext == "docx" || mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> DocKind.DOCX
         ext == "md" || ext == "markdown" -> DocKind.MARKDOWN
         ext in CODE_EXT -> DocKind.CODE
@@ -43,8 +44,15 @@ object TextExtractor {
     private const val MAX_PDF_PAGES = 600
     private const val MAX_DOCX_XML_BYTES = 60L * 1024 * 1024
 
-    fun extract(context: Context, file: File, kind: DocKind): Extracted = when (kind) {
-        DocKind.PDF -> pdf(context, file)
+    /** [ocrLangs] (e.g. "eng+tam") enables text recognition for scanned PDFs and photos; null = no OCR. */
+    fun extract(context: Context, file: File, kind: DocKind, ocrLangs: String? = null, maxOcrPages: Int = 30): Extracted = when (kind) {
+        DocKind.PDF -> pdf(context, file, ocrLangs, maxOcrPages)
+        DocKind.IMAGE -> {
+            if (ocrLangs == null) throw ExtractionException("Text recognition is needed for photos.")
+            val r = kotlinx.coroutines.runBlocking { com.localai.app.data.ocr.Ocr.recognizeFile(context, file, ocrLangs) }
+            if (r == null || r.text.count { it.isLetterOrDigit() } < 12) throw ExtractionException("No readable text found in this photo.")
+            Extracted(listOf(Section(r.text, "photo")), 1)
+        }
         DocKind.DOCX -> file.inputStream().use { docx(it) }
         DocKind.MARKDOWN -> Extracted(markdown(readText(file)), null)
         DocKind.CODE, DocKind.TEXT, DocKind.NOTE -> Extracted(listOf(Section(readText(file), null)), null)
@@ -70,7 +78,7 @@ object TextExtractor {
         return out
     }
 
-    private fun pdf(context: Context, file: File): Extracted {
+    private fun pdf(context: Context, file: File, ocrLangs: String?, maxOcrPages: Int): Extracted {
         PDFBoxResourceLoader.init(context.applicationContext)
         PDDocument.load(file).use { doc ->
             if (doc.isEncrypted) throw ExtractionException("This PDF is password-protected.")
@@ -84,7 +92,13 @@ object TextExtractor {
                 if (t.isNotEmpty()) { out += Section(t, "p. $p"); total += t.length }
                 if (total > MAX_TEXT_CHARS) break
             }
-            if (out.sumOf { it.text.length } < 20) throw ExtractionException("No text layer found (scanned PDF). OCR is planned for a later release.")
+            if (out.sumOf { it.text.length } < 20) {
+                // Scanned PDF: no text layer. Read the pages with on-device text recognition.
+                if (ocrLangs == null) throw ExtractionException("No text layer found (scanned PDF). Turn on text recognition in Settings.")
+                val pagesText = kotlinx.coroutines.runBlocking { com.localai.app.data.ocr.Ocr.recognizePdf(context, file, ocrLangs, maxOcrPages) }
+                if (pagesText.sumOf { it.second.length } < 20) throw ExtractionException("No readable text found, even with text recognition. The scan may be too blurry.")
+                return Extracted(pagesText.map { (p, t) -> Section(t, "p. $p (scanned)") }, pages)
+            }
             return Extracted(out, pages)
         }
     }

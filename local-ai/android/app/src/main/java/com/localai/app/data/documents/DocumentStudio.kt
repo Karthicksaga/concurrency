@@ -141,13 +141,26 @@ class DocumentStudio @Inject constructor(
             }
         }
         if (size > 40L * 1024 * 1024) error("This file is larger than 40 MB.")
-        val kind = kindFor(name, cr.getType(uri)) ?: error("Choose a PDF, Word (.docx), Markdown or text file.")
+        val kind = kindFor(name, cr.getType(uri)) ?: error("Choose a PDF, Word (.docx), photo, Markdown or text file.")
+        val st = settings.current()
+        val ocrLangs = com.localai.app.data.ocr.OcrPacks.spec(st.ocrLanguages.split(','), { com.localai.app.data.ocr.Ocr.isInstalled(context, it) })
         val tmp = File(context.cacheDir, "studio_input").apply { delete() }
         cr.openInputStream(uri)?.use { input -> tmp.outputStream().use { input.copyTo(it) } } ?: error("Cannot open the file.")
         try {
             val blocks = when (kind) {
                 DocKind.DOCX -> tmp.inputStream().use { DocxReader.read(it) }
-                DocKind.PDF -> Markdown.fromPlainText(pdfText(tmp))
+                DocKind.PDF -> pdfText(tmp)?.let { Markdown.fromPlainText(it) } ?: run {
+                    // scanned PDF: read the pages with on-device text recognition
+                    val pages = com.localai.app.data.ocr.Ocr.recognizePdf(context, tmp, ocrLangs, if (policyFor(st, device.profile).lite) 20 else 60)
+                    if (pages.sumOf { it.second.length } < 20) error("No readable text found, even with text recognition.")
+                    Markdown.fromPlainText(pages.joinToString("\n\n") { it.second })
+                }
+                DocKind.IMAGE -> {
+                    // "Scan to Word/PDF": photo of a page → editable document
+                    val r = com.localai.app.data.ocr.Ocr.recognizeFile(context, tmp, ocrLangs)
+                    if (r == null || r.text.count { it.isLetterOrDigit() } < 12) error("No readable text found in this photo. Try a sharper, well-lit photo taken straight on.")
+                    listOf(Block.Heading(1, listOf(Span(name.substringBeforeLast('.'))))) + Markdown.fromPlainText(r.text)
+                }
                 DocKind.MARKDOWN -> Markdown.parse(tmp.readText())
                 DocKind.CODE -> listOf(Block.Heading(1, listOf(Span(name))), Block.Code(tmp.readText().take(400_000)))
                 DocKind.TEXT, DocKind.NOTE -> Markdown.fromPlainText(tmp.readText().take(2_000_000))
@@ -157,14 +170,14 @@ class DocumentStudio @Inject constructor(
         } finally { tmp.delete() }
     }
 
-    private fun pdfText(f: File): String {
+    /** Text layer of a PDF, or null when it has none (scanned). */
+    private fun pdfText(f: File): String? {
         PDFBoxResourceLoader.init(context.applicationContext)
         PDDocument.load(f).use { doc ->
             if (doc.isEncrypted) error("This PDF is password-protected.")
             val s = PDFTextStripper().apply { lineSeparator = "\n"; paragraphEnd = "\n\n"; pageEnd = "\n\n"; endPage = minOf(doc.numberOfPages, 300) }
             val t = s.getText(doc)
-            if (t.trim().length < 20) error("No text layer found (scanned PDF). OCR is planned for a later release.")
-            return t
+            return t.takeIf { it.trim().length >= 20 }
         }
     }
 

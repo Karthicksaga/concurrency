@@ -267,7 +267,7 @@ fun KbFormScreen(nav: NavController, vm: KnowledgeViewModel = hiltViewModel()) {
             }
             Text("Sources", fontWeight = FontWeight.Medium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { picker.launch(arrayOf("application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/*", "application/json", "*/*")) }) { Text("Add files") }
+                OutlinedButton(onClick = { picker.launch(arrayOf("application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/*", "application/json", "image/*", "*/*")) }) { Text("Add files") }
                 OutlinedButton(onClick = { folderPicker.launch(null) }) { Text(if (folder == null) "Link a folder" else "Change folder") }
             }
             folder?.let { Text("Folder: ${it.lastPathSegment?.substringAfterLast(':') ?: it}  · kept in sync (new, changed and deleted files)", fontSize = 13.sp, color = La.colors.knowledge) }

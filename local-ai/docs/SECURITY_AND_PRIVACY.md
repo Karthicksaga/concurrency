@@ -6,7 +6,7 @@ Status: Draft for approval · Phase 3 output
 
 1. Your chats, documents, agents and memories stay on this device.
 2. LOCAL AI works without an account and without internet once a model is installed.
-3. The app connects to the internet only when you download or update a model or refresh the model catalog, and, only if you turn it on, to send your daily digest to your own mail server (ADR-0014). You can see every connection in **Settings › Privacy › Network log**.
+3. The app connects to the internet only when you download or update a model or a text-recognition language pack, or refresh the model catalog, and, only if you turn it on, to send your daily digest to your own mail server (ADR-0014). You can see every connection in **Settings › Privacy › Network log**.
 4. No analytics, no ads, no third-party SDKs that phone home.
 5. You can delete any memory, document, conversation or everything at once.
 
@@ -86,7 +86,7 @@ There are no network tools, no shell, no package install, no intent-launching to
 ## 5. Network
 
 - `network_security_config.xml`: cleartext disabled; HTTPS only.
-- Hosts allowlist for downloads: catalog-defined hosts (e.g. `huggingface.co`, its CDN). Custom URL download (V1.x) shows the host and requires confirmation.
+- Hosts allowlist for downloads: catalog-defined hosts (e.g. `huggingface.co`, its CDN) and `raw.githubusercontent.com` for pinned, checksum-verified text-recognition language packs (ADR-0016). Custom URL download (V1.x) shows the host and requires confirmation.
 - No `INTERNET` usage outside OkHttp in `:data:downloads` (Gradle module dependency check + custom lint rule forbidding `java.net`/OkHttp imports elsewhere).
 - Network log: every request (host, path, bytes, time) stored locally for 30 days.
 
@@ -103,6 +103,10 @@ There are no network tools, no shell, no package install, no intent-launching to
 | `CALL_PHONE` | **Not requested**: the dialer opens with the number; the user presses Call | — |
 | `RECORD_AUDIO` | Voice dictation and voice conversation (ADR-0015); on-device recognizer preferred | First tap on a microphone |
 | `CAMERA` | **Not requested**: the camera app takes the photo and writes it to a FileProvider URI the app owns | — |
+
+### 6.0 Content shared into the app
+
+"Share → Check with LOCAL AI" (`ACTION_SEND`, text or one image) is the only way the app sees a message from another app. The text or image is used on the phone for Scam check or Read it to me; shared images are copied into app storage and deleted with the screen. No SMS, notification or accessibility access is requested (ADR-0016).
 
 ### 6.1 Files shared with other apps
 

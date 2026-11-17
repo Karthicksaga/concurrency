@@ -358,6 +358,46 @@ await step('Settings: voice language and read-aloud persist', async () => {
   assert((await page.locator('.view').innerText()).includes('No SMS, contacts or call-log access'), 'phone data note');
 });
 
+await step('Scam check: same verdicts as the app’s rules; explanation; Tamil', async () => {
+  const levels = await page.evaluate(() => [
+    'VM-SBIUPD Dear Customer, your SBI account will be BLOCKED today. Update your KYC immediately at http://sbi-kyc-update.xyz/login or call 9876543210. Do not ignore.',
+    'You have received Rs 5,000 cashback! Enter your UPI PIN to receive the amount.',
+    'This is CBI. A parcel in your name with drugs was seized at customs. You are under digital arrest. Stay on video call.',
+    'Part time job! Like YouTube videos and earn Rs 3000 per day. Join telegram for prepaid task.',
+    'Share the OTP you just received to confirm your delivery.',
+    'உங்கள் மின்சார கட்டணம் செலுத்தப்படவில்லை. இன்று இரவு 9 மணிக்கு மின் இணைப்பு துண்டிக்கப்படும். அழைக்கவும் 9876543210',
+    'Your OTP for login is 482913. Do not share it with anyone. Valid for 5 minutes. - HDFC Bank',
+    'Hi Karthik, dinner at 8 tonight? Mom made biryani.',
+    'Your Amazon order #402-1 has shipped. Track at https://www.amazon.in/orders'
+  ].map((t) => LA.scamCheck(t).level));
+  assert(levels.join(',') === 'HIGH,HIGH,HIGH,HIGH,HIGH,HIGH,LOW,LOW,LOW', 'levels ' + levels.join(','));
+  await go('home'); await page.click('[data-action=go-scam]');
+  await page.click('[data-action=sc-sample][data-i="0"]');
+  assert((await text('.verdict-card')).includes('Likely a scam'), 'verdict');
+  assert(await page.locator('.flag').count() >= 3, 'red flags listed');
+  await page.waitForFunction(() => /OTP/.test(document.getElementById('sc-explain').textContent), null, { timeout: 8000 });
+  await page.click('[data-action=sc-lang][data-v="ta-IN"]');
+  await page.waitForFunction(() => /மோசடி/.test(document.getElementById('sc-explain').textContent), null, { timeout: 8000 });
+  await page.waitForTimeout(400); await shot('30-scam-check');
+  assert((await page.locator('.view').innerText()).includes('1930'), 'helpline advice');
+  await page.click('[data-action=sc-sample][data-i="3"]');
+  assert((await text('.verdict-card')).includes('No common scam signs'), 'genuine OTP SMS is not flagged');
+});
+
+await step('Read it to me: photo → text → simple explanation in Hindi', async () => {
+  await go('home'); await page.click('[data-action=go-read]');
+  await page.click('[data-action=rd-photo]');
+  await page.click('.sheet [data-action=photo-sample][data-k=bill]');
+  await page.waitForFunction(() => document.getElementById('rd-explain') && /2,184/.test(document.getElementById('rd-explain').textContent), null, { timeout: 8000 });
+  assert((await page.locator('.view').innerText()).includes('Consumer no. 04-118-2291'), 'text found shown');
+  await page.click('[data-action=rd-lang][data-v="hi-IN"]');
+  await page.waitForFunction(() => /बिजली/.test(document.getElementById('rd-explain').textContent), null, { timeout: 8000 });
+  await page.waitForTimeout(600); await shot('31-read-it-to-me');
+  await page.click('[data-action=rd-photo]');
+  await page.click('.sheet [data-action=photo-sample][data-k=plant]');
+  assert((await page.locator('.view').innerText()).includes('No readable text'), 'photo without text handled');
+});
+
 await step('Launch animation plays and gets out of the way', async () => {
   await go('home');
   await page.evaluate(() => LA.splash(1900));
