@@ -158,6 +158,13 @@ fun SettingsScreen(nav: NavController, vm: SettingsViewModel = hiltViewModel()) 
                     FilterChip(selected = kotlin.math.abs(settings.speechRate - r) < 0.01f, onClick = { vm.set { setVoice(settings.voiceLanguage, r, settings.readAloud) } }, label = { Text(l) })
                 }
             }
+            Text("Interrupt by talking (voice mode)", fontWeight = FontWeight.Medium)
+            FlowRowSimple {
+                com.localai.app.data.voice.BargeInSensitivity.entries.forEach { b ->
+                    FilterChip(selected = settings.bargeIn == b.name, onClick = { vm.set { setBargeIn(b.name) } }, label = { Text(b.label) })
+                }
+            }
+            Text("Start talking while the assistant speaks and it stops, listens and answers you. Uses the phone's echo cancellation; earphones work best.", fontSize = 11.5.sp, color = La.colors.text3)
             ToggleRow("Read replies aloud", "Speak every answer in chat (you can also tap the speaker under any answer).", settings.readAloud) { v -> vm.set { setVoice(settings.voiceLanguage, settings.speechRate, v) } }
             val ctx = androidx.compose.ui.platform.LocalContext.current
             TextButton(onClick = { runCatching { ctx.startActivity(android.content.Intent("com.android.settings.TTS_SETTINGS").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) } }) { Text("Text-to-speech settings") }

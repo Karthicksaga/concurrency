@@ -95,7 +95,42 @@ class VoiceViewModel @Inject constructor(
     private val input: SpeechInput,
     private val output: SpeechOutput,
     private val settings: SettingsRepository,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
 ) : ViewModel() {
+    /** Talk over the assistant to interrupt it (barge-in), like a phone call. */
+    private val monitor = com.localai.app.data.voice.BargeInMonitor()
+    var bargeIn by mutableStateOf(com.localai.app.data.voice.BargeInSensitivity.NORMAL); private set
+    /** True while the microphone is watching for you to interrupt. */
+    var interruptible by mutableStateOf(false); private set
+    init { viewModelScope.launch { bargeIn = com.localai.app.data.voice.BargeInSensitivity.of(settings.current().bargeIn) } }
+
+    fun cycleBargeIn() {
+        val all = com.localai.app.data.voice.BargeInSensitivity.entries
+        bargeIn = all[(all.indexOf(bargeIn) + 1) % all.size]
+        viewModelScope.launch { settings.setBargeIn(bargeIn.name) }
+        if (bargeIn == com.localai.app.data.voice.BargeInSensitivity.OFF) stopMonitor()
+        else if (phase == VoicePhase.THINKING || phase == VoicePhase.SPEAKING) startMonitor()
+    }
+
+    private fun micAllowed() = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    /** Watch the mic while the assistant thinks or speaks; talking interrupts it and starts listening. */
+    private fun startMonitor() {
+        if (!active || useVoiceTyping || !micAllowed()) return
+        interruptible = monitor.start(bargeIn) { onBargeIn() }
+    }
+
+    private fun stopMonitor() { monitor.stop(); interruptible = false }
+
+    private fun onBargeIn() {
+        interruptible = false
+        if (!active || (phase != VoicePhase.SPEAKING && phase != VoicePhase.THINKING)) return
+        turn?.cancel(); output.stop(); chat.stop()
+        silentTurns = 0
+        phase = VoicePhase.LISTENING; heard = ""
+        // Give Android a moment to release the microphone before the recognizer opens it.
+        viewModelScope.launch { kotlinx.coroutines.delay(120); listen() }
+    }
     val id: String = checkNotNull(savedState["id"])
     var phase by mutableStateOf(VoicePhase.IDLE); private set
     var heard by mutableStateOf(""); private set
@@ -120,14 +155,20 @@ class VoiceViewModel @Inject constructor(
         when (phase) {
             VoicePhase.IDLE -> listen()
             VoicePhase.LISTENING -> input.stop()
-            VoicePhase.THINKING -> { chat.stop(); turn?.cancel(); phase = VoicePhase.IDLE }
-            VoicePhase.SPEAKING -> { turn?.cancel(); output.stop(); chat.stop(); listen() }
+            VoicePhase.THINKING -> { stopMonitor(); chat.stop(); turn?.cancel(); phase = VoicePhase.IDLE }
+            VoicePhase.SPEAKING -> { stopMonitor(); turn?.cancel(); output.stop(); chat.stop(); listen() }
         }
     }
 
     fun listen() {
         if (!active) return
-        if (chat.live.value != null) { error = "The model is busy with another reply."; phase = VoicePhase.IDLE; return }
+        stopMonitor()
+        if (chat.live.value != null) {
+            // An interrupted reply may take a moment to stop.
+            viewModelScope.launch { repeat(20) { if (chat.live.value == null) { listen(); return@launch }; kotlinx.coroutines.delay(100) }
+                error = "The model is busy with another reply."; phase = VoicePhase.IDLE }
+            return
+        }
         output.stop()
         if (useVoiceTyping) { phase = VoicePhase.LISTENING; heard = ""; voiceTypingRequest++; return }
         phase = VoicePhase.LISTENING; heard = ""; level = 0f
@@ -159,6 +200,7 @@ class VoiceViewModel @Inject constructor(
 
     private fun ask(text: String) {
         heard = text; reply = ""; phase = VoicePhase.THINKING
+        startMonitor()
         turn = viewModelScope.launch {
             val s = settings.current()
             chat.send(id, text)
@@ -177,8 +219,8 @@ class VoiceViewModel @Inject constructor(
                 val rest = if (last.status == "ERROR") listOf(Speakable.clean(last.content)) else stream.flush(last.content)
                 rest.forEach { speak(it, s.voiceLanguage, s.speechRate) }
             }
-            if (phase == VoicePhase.THINKING && !output.speaking.value) { phase = VoicePhase.IDLE }
-            output.onIdle { if (active && phase == VoicePhase.SPEAKING) { if (handsFree) listen() else phase = VoicePhase.IDLE } }
+            if (phase == VoicePhase.THINKING && !output.speaking.value) { phase = VoicePhase.IDLE; stopMonitor() }
+            output.onIdle { if (active && phase == VoicePhase.SPEAKING) { stopMonitor(); if (handsFree) listen() else phase = VoicePhase.IDLE } }
         }
     }
 
@@ -187,10 +229,10 @@ class VoiceViewModel @Inject constructor(
         phase = VoicePhase.SPEAKING
     }
 
-    fun pause() { active = false; input.cancel(); output.stop() }
+    fun pause() { active = false; stopMonitor(); input.cancel(); output.stop() }
     fun resume() { active = true }
 
-    override fun onCleared() { active = false; input.cancel(); output.stop(); chat.discardIfEmpty(id) }
+    override fun onCleared() { active = false; stopMonitor(); input.cancel(); output.stop(); chat.discardIfEmpty(id) }
 }
 
 @Composable
@@ -240,14 +282,22 @@ fun VoiceScreen(nav: NavController, vm: VoiceViewModel = hiltViewModel()) {
         }
         Spacer(Modifier.height(18.dp))
         Text(phase.label, style = MaterialTheme.typography.titleMedium, color = La.colors.text)
+        if (vm.interruptible) Text("Just start talking to interrupt", fontSize = 12.5.sp, color = La.colors.text3, modifier = Modifier.padding(top = 4.dp))
         vm.error?.let { Spacer(Modifier.height(8.dp)); Text(it, color = La.colors.bad, fontSize = 13.sp, textAlign = TextAlign.Center) }
         Spacer(Modifier.height(18.dp))
         Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (vm.heard.isNotBlank()) Text("“${vm.heard}”", color = La.colors.text2, fontSize = 15.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
             if (vm.reply.isNotBlank()) Text(Speakable.clean(vm.reply), color = La.colors.text, fontSize = 15.sp, modifier = Modifier.fillMaxWidth().heightIn(min = 0.dp))
         }
-        Row(Modifier.clip(CircleShape).background(La.colors.surface2).clickable { vm.handsFree = !vm.handsFree }.padding(horizontal = 14.dp, vertical = 8.dp)) {
-            Text(if (vm.handsFree) "Hands-free: on · keeps listening after each answer" else "Hands-free: off · tap the orb to talk", fontSize = 12.sp, color = La.colors.text2)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.clip(CircleShape).background(La.colors.surface2).clickable { vm.handsFree = !vm.handsFree }.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                Text(if (vm.handsFree) "Hands-free: on" else "Hands-free: off", fontSize = 12.sp, color = La.colors.text2)
+            }
+            Row(Modifier.clip(CircleShape).background(La.colors.surface2).clickable { vm.cycleBargeIn() }.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                Text("Interrupt by voice: ${vm.bargeIn.label}", fontSize = 12.sp, color = La.colors.text2)
+            }
         }
+        Text("Works best with earphones. On the speaker, the phone cancels its own voice; if it interrupts itself, choose Off or use earphones.",
+            fontSize = 11.sp, color = La.colors.text3, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp))
     }
 }
