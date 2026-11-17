@@ -20,3 +20,11 @@
 -dontwarn javax.security.sasl.**
 -dontwarn javax.naming.**
 -dontwarn org.apache.harmony.**
+
+# Tesseract4Android / Leptonica: native code reads fields such as TessBaseAPI.mNativeData and Pix.mNativePix by name
+# and calls back into Java. Renaming them makes the first text recognition abort in native code (the 0.1.9 crash).
+-keep class com.googlecode.tesseract.android.** { *; }
+-keep class com.googlecode.leptonica.android.** { *; }
+
+# sherpa-onnx: native code reads every config field (model paths, threads, ...) and builds GeneratedAudio by name.
+-keep class com.k2fsa.sherpa.onnx.** { *; }

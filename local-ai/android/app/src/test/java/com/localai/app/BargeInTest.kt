@@ -49,3 +49,28 @@ class BargeInTest {
         assertFalse(BargeInLogic(BargeInSensitivity.NORMAL).feed(-20f, 0))   // calibrating: never triggers immediately
     }
 }
+
+class NaturalVoicesTest {
+    @Test fun catalogIsPinnedAndVerified() {
+        val all = com.localai.app.data.voice.NaturalVoices.all
+        assertTrue(all.size >= 6)
+        all.forEach { v ->
+            assertEquals(40, v.revision.length)                                   // pinned commit, not "main"
+            assertTrue(v.files.all { it.sha256.length == 64 && it.size > 0 })
+            assertTrue(v.files.any { it.name.endsWith(".onnx") } && v.files.any { it.name == "tokens.txt" })
+            assertTrue(v.url(v.files[0]).startsWith("https://huggingface.co/csukuangfj/${v.repo}/resolve/${v.revision}/"))
+        }
+        assertTrue(all.filter { it.language == "hi" }.all { it.fast })
+    }
+
+    @Test fun scriptDecidesWhichVoiceSpeaks() {
+        val nv = com.localai.app.data.voice.NaturalVoices
+        val amy = nv.byId("amy")!!; val hindi = nv.byId("priyamvada")!!
+        assertTrue(nv.canSpeak(amy, "Pack warm layers for Ooty."))
+        assertFalse(nv.canSpeak(amy, "உங்கள் மின்சார கட்டணம்"))               // Tamil → phone's voice
+        assertTrue(nv.canSpeak(hindi, "यह अक्टूबर का बिजली बिल है।"))
+        assertFalse(nv.canSpeak(hindi, "This is in English."))
+        assertTrue(nv.canSpeak(amy, "12:30 — 45%"))                            // no letters: either is fine
+        assertEquals("hi", nv.scriptLanguage("बिल 2,184 रुपये, due 28 Nov"))     // mostly Devanagari
+    }
+}

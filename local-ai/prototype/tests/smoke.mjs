@@ -318,7 +318,8 @@ await step('Voice conversation: listen → think → speak → transcript saved;
   await page.waitForTimeout(600); await shot('26-voice-speaking');
   assert((await text('.v-reply')).length > 10, 'reply text streams');
   // Tap while speaking interrupts and listens again (hands-free may already have started listening).
-  if (await page.evaluate(() => document.querySelector('.voice').dataset.phase === 'speaking')) await page.click('[data-action=orb]');
+  // Tap while speaking (atomic: the animated orb never settles, so a real click can land after the answer ends).
+  await page.evaluate(() => { if (document.querySelector('.voice').dataset.phase === 'speaking') document.querySelector('[data-action=orb]').click(); });
   await page.waitForFunction(() => document.querySelector('.voice').dataset.phase === 'listening', null, { timeout: 8000 });
   await page.click('[data-action=orb]');   // tap while listening stops
   assert((await text('.v-phase')) === 'Tap to talk', 'back to idle');
@@ -419,6 +420,21 @@ await step('Chat: drawer with sections, pinned chats, search; pill composer swit
   await page.click('[data-action=new-here]'); await page.waitForTimeout(250);
   assert((await page.locator('.chat-empty h2').innerText()).includes('What can I help with?'), 'empty state');
   await shot('33-chat-empty');
+});
+
+await step('Voice: talk over the assistant to interrupt; natural voice picker', async () => {
+  await go('home'); await page.click('[data-action=talk]'); await page.waitForTimeout(200);
+  await page.click('[data-action=orb]');
+  await page.waitForFunction(() => document.querySelector('.voice').dataset.phase === 'speaking', null, { timeout: 8000 });
+  assert((await text('.v-hint')).includes('Just start talking'), 'barge-in hint');
+  await page.click('[data-action=talk-over]');
+  await page.waitForFunction(() => document.querySelector('.voice').dataset.phase === 'listening', null, { timeout: 3000 });
+  await page.click('[data-action=orb]');
+  await go('prefs');
+  await page.click('[data-action=v-dl][data-v=amy]');
+  assert(await page.evaluate(() => LA.S.settings.ttsVoice === 'amy'), 'natural voice selected');
+  await page.click('[data-action=barge][data-v=SENSITIVE]');
+  assert(await page.evaluate(() => LA.S.settings.bargeIn === 'SENSITIVE'), 'barge-in sensitivity saved');
 });
 
 await step('Launch animation plays and gets out of the way', async () => {

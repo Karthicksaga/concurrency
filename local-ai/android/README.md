@@ -37,6 +37,8 @@ The APK is signed with a **public test key** committed in `app/debug-release.key
 | **Daily digest:** at your chosen time, an on-device summary of new documents, notes and workflows → notification + saved chat + Email button (opens your email app pre-filled) | ✅ |
 | **Automatic digest email (opt-in):** sends through your own mail server (Gmail/Outlook/Yahoo/Zoho/custom) with an app password stored in the Android Keystore; test email; falls back to the Email button | ✅ |
 | **Photos:** take a photo or pick one in chat ("Ask a photo" on Home) and ask about it; vision models SmolVLM 500M (4–6 GB phones), SmolVLM2 2.2B, Qwen2.5-VL 3B, Gemma 3 4B; image encoder downloaded and verified with the model | ✅ |
+| **Natural voices:** neural voices on the phone (sherpa-onnx/Piper): Amy (US), Jenny (UK), Priyamvada & Rohan (Hindi), Lessac HD, Kitten (8 expressive); download, preview, choose in Settings › Voice; phone's voice for other languages | ✅ |
+| **Interrupt by talking:** in voice mode, start speaking while the assistant thinks or talks; it stops, listens and answers (echo-cancelled mic, self-calibrating; Off / Normal / Sensitive) | ✅ |
 | **Voice:** recognizer fallback chain (on-device → system → Google service → Android voice-typing screen; failures remembered), dictate in chat, read any answer aloud, hands-free voice conversation (listen → answer → speak while writing → listen; tap to interrupt); voice language and speed; on-device speech recognizer when the phone has one | ✅ |
 | **Document Studio:** write reports, letters, emails, minutes, resumes, essays and proposals with AI → PDF or Word; convert Word → PDF, PDF → Word, Markdown/text → either, optionally fixing, summarizing, translating, formalizing or simplifying with AI; save any chat answer as PDF/Word; open, share or save to phone | ✅ |
 | **Text recognition (OCR):** offline Tesseract in an isolated `:ocr` process (a crash on a strange image fails only that file); English built in, Hindi/Tamil/Telugu/Kannada/Malayalam/Bengali/Marathi downloadable (Settings › Text recognition); used for chat photos (text-only models can answer about documents), scanned PDFs and photos in Knowledge, scan-to-Word/PDF in Documents | ✅ |
@@ -71,7 +73,7 @@ The first native build compiles llama.cpp for every ARM CPU variant and takes 15
 ## Tests
 
 ```bash
-./gradlew testReleaseUnitTest          # JVM (32 tests): tiers, lite policy, verdicts, GGUF reader, calculator, chunker, sources, templates, email,
+./gradlew testReleaseUnitTest          # JVM (39 tests): tiers, lite policy, verdicts, GGUF reader, calculator, chunker, sources, templates, email,
                                        #   Markdown/Word round trip, document chunking, speech sentence streaming, photo scope, image packing,
                                        #   scam rules (English/Tamil/Hindi, genuine messages), OCR cleanup
 native-test/run.sh [model.gguf] [embedder.gguf ...]   # host build of la_jni.cpp + llama.cpp driven through JNI with real models

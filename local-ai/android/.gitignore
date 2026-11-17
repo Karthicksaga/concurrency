@@ -8,3 +8,5 @@ local.properties
 captures/
 *.keystore
 !debug-release.keystore
+app/libs/*.aar
+app/libs/*.part

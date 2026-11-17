@@ -46,7 +46,9 @@ data class AppSettings(
     val speechRate: Float = 1.0f,
     val readAloud: Boolean = false,       // speak every reply in normal chat
     val ocrLanguages: String = "",
-    val bargeIn: String = "NORMAL",       // interrupt the assistant by talking: OFF | NORMAL | SENSITIVE        // extra text-recognition languages (csv of tessdata codes); English is always on
+    val bargeIn: String = "NORMAL",
+    val ttsVoice: String = "",            // natural voice id (NaturalVoices), "" = the phone's text-to-speech voice
+    val ttsSpeaker: Int = 0,              // speaker within a multi-speaker voice       // interrupt the assistant by talking: OFF | NORMAL | SENSITIVE        // extra text-recognition languages (csv of tessdata codes); English is always on
 )
 
 data class ModelProfile(val contextLength: Int, val temperature: Float, val topP: Float)
@@ -91,6 +93,8 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         val readAloud = booleanPreferencesKey("read_aloud")
         val ocrLangs = stringPreferencesKey("ocr_langs")
         val bargeIn = stringPreferencesKey("barge_in")
+        val ttsVoice = stringPreferencesKey("tts_voice")
+        val ttsSpeaker = intPreferencesKey("tts_speaker")
         fun ctx(id: String) = intPreferencesKey("ctx_$id")
         fun temp(id: String) = floatPreferencesKey("temp_$id")
         fun topP(id: String) = floatPreferencesKey("topp_$id")
@@ -118,6 +122,8 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
             readAloud = p[K.readAloud] ?: false,
             ocrLanguages = p[K.ocrLangs] ?: "",
             bargeIn = p[K.bargeIn] ?: "NORMAL",
+            ttsVoice = p[K.ttsVoice] ?: "",
+            ttsSpeaker = p[K.ttsSpeaker] ?: 0,
         )
     }
 
@@ -138,6 +144,7 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
     }
     suspend fun setFolderSync(v: Boolean) = edit { it[K.folderSync] = v }
     suspend fun setBargeIn(v: String) = edit { it[K.bargeIn] = v }
+    suspend fun setTtsVoice(id: String, speaker: Int = 0) = edit { it[K.ttsVoice] = id; it[K.ttsSpeaker] = speaker }
     suspend fun setOcrLanguages(codes: Collection<String>) = edit { it[K.ocrLangs] = codes.filter { c -> c != "eng" }.distinct().joinToString(",") }
     suspend fun setVoice(language: String, rate: Float, readAloud: Boolean) = edit {
         it[K.voiceLang] = language; it[K.speechRate] = rate.coerceIn(0.5f, 2f); it[K.readAloud] = readAloud

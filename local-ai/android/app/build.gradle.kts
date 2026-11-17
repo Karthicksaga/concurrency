@@ -1,3 +1,6 @@
+import java.net.URL
+import java.security.MessageDigest
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -78,7 +81,25 @@ android {
 
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 
+// Natural on-device voices (sherpa-onnx, Apache-2.0). The AAR is not on Maven Central: fetch the pinned release once
+// and verify its SHA-256 before use. Only arm64-v8a is packaged (abiFilters), all native libs are 16 KB aligned.
+val sherpaVersion = "1.13.8"
+val sherpaSha256 = "633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96"
+val sherpaAar = file("libs/sherpa-onnx-$sherpaVersion.aar")
+fun sha256Of(f: File): String = MessageDigest.getInstance("SHA-256").let { md ->
+    f.inputStream().use { s -> val b = ByteArray(1 shl 16); while (true) { val n = s.read(b); if (n < 0) break; md.update(b, 0, n) } }
+    md.digest().joinToString("") { "%02x".format(it) }
+}
+if (!sherpaAar.exists() || sha256Of(sherpaAar) != sherpaSha256) {
+    sherpaAar.parentFile.mkdirs()
+    val tmp = File(sherpaAar.path + ".part")
+    URL("https://github.com/k2-fsa/sherpa-onnx/releases/download/v$sherpaVersion/sherpa-onnx-$sherpaVersion.aar").openStream().use { i -> tmp.outputStream().use { i.copyTo(it) } }
+    check(sha256Of(tmp) == sherpaSha256) { "sherpa-onnx AAR checksum mismatch" }
+    tmp.renameTo(sherpaAar)
+}
+
 dependencies {
+    implementation(files(sherpaAar))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)

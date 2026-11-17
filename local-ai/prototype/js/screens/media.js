@@ -128,6 +128,9 @@ window.LA = window.LA || {};
     root.querySelector('.v-phase').textContent = PH[V.phase];
     root.querySelector('.v-heard').textContent = V.heard ? '“' + V.heard + '”' : '';
     root.querySelector('.v-reply').innerHTML = V.reply ? LA.md(V.reply) : '';
+    const busy = V.phase === 'speaking' || V.phase === 'thinking';
+    const hint = root.querySelector('.v-hint'); if (hint) hint.textContent = busy ? (LA.S.settings.bargeIn === 'OFF' ? 'Tap the orb to interrupt' : 'Just start talking to interrupt') : '';
+    const to = root.querySelector('[data-action=talk-over]'); if (to) to.hidden = !busy;
   }
   function vListen() {
     vStop(); const qa = VOICE_QA[V.round % VOICE_QA.length];
@@ -165,7 +168,11 @@ window.LA = window.LA || {};
         <div class="voice" data-phase="${V.phase}"><div class="banner info">${I('info')}<span>Simulated conversation. In the app, your words are recognised on the phone and the on-device model answers out loud.</span></div>
         <button class="orb" data-action="orb" aria-label="${PH[V.phase]}"><i></i>${I('mic')}</button>
         <div class="v-phase">${PH[V.phase]}</div><div class="v-heard"></div><div class="v-reply md"></div>
-        <button class="chip ${V.handsFree ? 'on' : ''}" data-action="hands">${V.handsFree ? 'Hands-free: on · keeps listening' : 'Hands-free: off · tap to talk'}</button></div>`;
+        <div class="v-hint">${V.phase === 'speaking' || V.phase === 'thinking' ? (LA.S.settings.bargeIn === 'OFF' ? 'Tap the orb to interrupt' : 'Just start talking to interrupt') : ''}</div>
+        <div class="chips" style="justify-content:center"><button class="chip ${V.handsFree ? 'on' : ''}" data-action="hands">${V.handsFree ? 'Hands-free: on' : 'Hands-free: off'}</button>
+        <button class="chip ${LA.S.settings.bargeIn !== 'OFF' ? 'on' : ''}" data-action="barge">Interrupt by voice: ${({ OFF: 'Off', NORMAL: 'Normal', SENSITIVE: 'Sensitive' })[LA.S.settings.bargeIn || 'NORMAL']}</button>
+        <button class="chip" data-action="talk-over" ${V.phase === 'speaking' || V.phase === 'thinking' ? '' : 'hidden'}>Simulate: start talking</button></div>
+        <span class="xs faint" style="text-align:center">Voice: ${esc((LA.NATURAL.find((v) => v.id === LA.S.settings.ttsVoice) || { name: "phone's voice" }).name)} · change in Settings › Voice</span></div>`;
     },
     mount() { vPaint(); },
     unmount() { vStop(); if (V) { V.phase = 'idle'; } },
@@ -177,9 +184,17 @@ window.LA = window.LA || {};
         else if (V.phase === 'thinking') { vStop(); V.phase = 'idle'; vPaint(); LA.toast('Stopped'); }
         else { vStop(); V.round++; vListen(); }
       },
-      hands: () => { V.handsFree = !V.handsFree; const b = document.querySelector('[data-action=hands]'); b.classList.toggle('on', V.handsFree); b.textContent = V.handsFree ? 'Hands-free: on · keeps listening' : 'Hands-free: off · tap to talk'; }
+      hands: () => { V.handsFree = !V.handsFree; LA.refresh(); },
+      barge: () => { const o = ['NORMAL', 'SENSITIVE', 'OFF']; const s = LA.S.settings; s.bargeIn = o[(o.indexOf(s.bargeIn || 'NORMAL') + 1) % 3]; LA.save(); LA.refresh(); },
+      // In the app the microphone hears you (echo-cancelled) and this happens automatically.
+      'talk-over': () => { if (LA.S.settings.bargeIn === 'OFF') { LA.toast('Interrupt by voice is off'); return; } vStop(); V.round++; LA.toast('Heard you: stopped and listening'); vListen(); }
     }
   };
+  LA.NATURAL = [
+    { id: 'amy', name: 'Amy', d: 'American English, warm female · fast', mb: 63 }, { id: 'jenny', name: 'Jenny', d: 'British English, female · fast', mb: 63 },
+    { id: 'priyamvada', name: 'Priyamvada', d: 'हिन्दी Hindi, female · fast', mb: 63 }, { id: 'rohan', name: 'Rohan', d: 'हिन्दी Hindi, male · fast', mb: 63 },
+    { id: 'lessac', name: 'Lessac HD', d: 'American English, higher quality · slower', mb: 114 }, { id: 'kitten', name: 'Kitten Expressive', d: 'English, 8 expressive voices · slower', mb: 24 }
+  ];
   LA.VOICE_LANGS = [['', 'Phone language'], ['en-IN', 'English (India)'], ['en-US', 'English (US)'], ['hi-IN', 'हिन्दी'], ['ta-IN', 'தமிழ்'], ['te-IN', 'తెలుగు'], ['kn-IN', 'ಕನ್ನಡ'], ['ml-IN', 'മലയാളം'], ['bn-IN', 'বাংলা'], ['es-ES', 'Español'], ['fr-FR', 'Français'], ['de-DE', 'Deutsch']];
 
   /* ---------- Document Studio ---------- */

@@ -66,7 +66,30 @@ class SettingsViewModel @Inject constructor(
     device: DeviceCapabilityService,
     val email: com.localai.app.data.email.EmailService,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
+    private val speech: com.localai.app.data.voice.SpeechOutput,
 ) : ViewModel() {
+    // ---- natural voices ----
+    val voiceProgress = androidx.compose.runtime.mutableStateMapOf<String, Float>()
+    var voiceVersion by androidx.compose.runtime.mutableIntStateOf(0); private set
+    var voiceError by androidx.compose.runtime.mutableStateOf<String?>(null)
+    fun voiceInstalled(v: com.localai.app.data.voice.NaturalVoice) = com.localai.app.data.voice.NaturalVoices.isInstalled(context, v)
+    fun voiceDownload(v: com.localai.app.data.voice.NaturalVoice) = viewModelScope.launch {
+        voiceError = null; voiceProgress[v.id] = 0f
+        com.localai.app.data.voice.NaturalVoices.download(context, v) { p -> voiceProgress[v.id] = p }
+            .onSuccess { repo.setTtsVoice(v.id, 0); speech.releaseVoice(); speech.preview(v, 0, repo.current().speechRate) }
+            .onFailure { voiceError = it.message }
+        voiceProgress.remove(v.id); voiceVersion++
+    }
+    fun voiceUse(id: String, speaker: Int = 0) = viewModelScope.launch {
+        repo.setTtsVoice(id, speaker); speech.releaseVoice()
+        com.localai.app.data.voice.NaturalVoices.byId(id)?.let { speech.preview(it, speaker, repo.current().speechRate) }
+    }
+    fun voicePreview(v: com.localai.app.data.voice.NaturalVoice, speaker: Int) = viewModelScope.launch { speech.preview(v, speaker, repo.current().speechRate) }
+    fun voiceDelete(v: com.localai.app.data.voice.NaturalVoice) = viewModelScope.launch {
+        speech.stop(); speech.releaseVoice()
+        if (repo.current().ttsVoice == v.id) repo.setTtsVoice("", 0)
+        com.localai.app.data.voice.NaturalVoices.delete(context, v); voiceVersion++
+    }
     val device = device.profile
     val settings = repo.settings.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     fun set(block: suspend SettingsRepository.() -> Unit) = viewModelScope.launch { repo.block() }
@@ -158,6 +181,42 @@ fun SettingsScreen(nav: NavController, vm: SettingsViewModel = hiltViewModel()) 
                     FilterChip(selected = kotlin.math.abs(settings.speechRate - r) < 0.01f, onClick = { vm.set { setVoice(settings.voiceLanguage, r, settings.readAloud) } }, label = { Text(l) })
                 }
             }
+            Text("Voice", fontWeight = FontWeight.Medium)
+            Text("Natural voices are neural voices that run on this phone (downloaded once, then offline). The phone's own voice is used for other languages, like Tamil.",
+                fontSize = 11.5.sp, color = La.colors.text3)
+            @Suppress("UNUSED_VARIABLE") val vv = vm.voiceVersion
+            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) { Text("Phone's voice", fontSize = 14.sp, fontWeight = FontWeight.Medium); Text("All languages · Android text-to-speech", fontSize = 12.sp, color = La.colors.text3) }
+                androidx.compose.material3.RadioButton(selected = settings.ttsVoice.isBlank(), onClick = { vm.set { setTtsVoice("", 0) } })
+            }
+            com.localai.app.data.voice.NaturalVoices.all.forEach { v ->
+                val installed = vm.voiceInstalled(v)
+                val prog = vm.voiceProgress[v.id]
+                val selected = settings.ttsVoice == v.id
+                Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(v.name + if (v.fast) "" else " · slower", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Text(v.description, fontSize = 12.sp, color = La.colors.text3)
+                            Text(if (prog != null) "Downloading ${(prog * 100).toInt()}%" else "%.0f MB".format(v.sizeBytes / 1e6) + if (installed) " · installed" else "", fontSize = 11.5.sp, color = La.colors.text3)
+                        }
+                        when {
+                            prog != null -> androidx.compose.material3.CircularProgressIndicator(progress = { prog }, modifier = Modifier.size(24.dp))
+                            !installed -> TextButton(onClick = { vm.voiceDownload(v) }) { Text("Download") }
+                            else -> androidx.compose.material3.RadioButton(selected = selected, onClick = { vm.voiceUse(v.id, if (selected) settings.ttsSpeaker else 0) })
+                        }
+                    }
+                    if (installed) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TextButton(onClick = { vm.voicePreview(v, if (selected) settings.ttsSpeaker else 0) }) { Text("Preview") }
+                        TextButton(onClick = { vm.voiceDelete(v) }) { Text("Remove", color = La.colors.text3) }
+                    }
+                    if (installed && v.speakers > 1 && selected) FlowRowSimple {
+                        (0 until v.speakers).forEach { sp -> FilterChip(selected = settings.ttsSpeaker == sp, onClick = { vm.voiceUse(v.id, sp) }, label = { Text("Voice ${sp + 1}") }) }
+                    }
+                }
+            }
+            vm.voiceError?.let { Text(it, color = La.colors.bad, fontSize = 12.sp) }
+            Spacer(Modifier.height(8.dp))
             Text("Interrupt by talking (voice mode)", fontWeight = FontWeight.Medium)
             FlowRowSimple {
                 com.localai.app.data.voice.BargeInSensitivity.entries.forEach { b ->

@@ -206,7 +206,10 @@ class SpeechInput @Inject constructor(@ApplicationContext private val context: C
 
 /** Text-to-speech with a sentence queue. Speaks with the phone's TTS engine (offline voices when installed). */
 @Singleton
-class SpeechOutput @Inject constructor(@ApplicationContext private val context: Context) {
+class SpeechOutput @Inject constructor(
+    @ApplicationContext private val context: Context,
+    private val settings: com.localai.app.data.settings.SettingsRepository,
+) {
     private var tts: TextToSpeech? = null
     private var ready = CompletableDeferred<Boolean>()
     private val pending = AtomicInteger(0)
@@ -216,7 +219,15 @@ class SpeechOutput @Inject constructor(@ApplicationContext private val context: 
     /** Id of the chat message being read aloud, for the speaker button state. */
     private val _speakingId = MutableStateFlow<String?>(null)
     val speakingId: StateFlow<String?> = _speakingId.asStateFlow()
-    private var idle: (() -> Unit)? = null
+    @Volatile private var idle: (() -> Unit)? = null
+
+    // ---- natural (neural) voice pipeline: synthesis runs one sentence ahead of playback ----
+    private val neural by lazy { NaturalTtsEngine(context) }
+    private val synthExec = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "tts-synth") }
+    private val playExec = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "tts-play").apply { priority = Thread.MAX_PRIORITY } }
+    private val generation = AtomicInteger(0)
+    @Volatile private var track: android.media.AudioTrack? = null
+    private val waiters = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.CountDownLatch>()
 
     private suspend fun engine(): TextToSpeech? {
         if (tts == null) {
@@ -224,14 +235,17 @@ class SpeechOutput @Inject constructor(@ApplicationContext private val context: 
             tts = TextToSpeech(context) { status -> ready.complete(status == TextToSpeech.SUCCESS) }
             tts!!.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) { _speaking.value = true }
-                override fun onDone(utteranceId: String?) = finished()
-                @Deprecated("Deprecated in Java") override fun onError(utteranceId: String?) = finished()
-                override fun onError(utteranceId: String?, errorCode: Int) = finished()
-                override fun onStop(utteranceId: String?, interrupted: Boolean) = finished()
+                override fun onDone(utteranceId: String?) = done(utteranceId)
+                @Deprecated("Deprecated in Java") override fun onError(utteranceId: String?) = done(utteranceId)
+                override fun onError(utteranceId: String?, errorCode: Int) = done(utteranceId)
+                override fun onStop(utteranceId: String?, interrupted: Boolean) = done(utteranceId)
             })
         }
         return if (ready.await()) tts else null
     }
+
+    /** Utterances started by the neural pipeline only release their waiter; the pipeline counts them itself. */
+    private fun done(id: String?) { val w = id?.let { waiters.remove(it) }; if (w != null) w.countDown() else finished() }
 
     private fun finished() {
         if (pending.decrementAndGet() <= 0) {
@@ -242,8 +256,16 @@ class SpeechOutput @Inject constructor(@ApplicationContext private val context: 
 
     /** Speaks [text] after whatever is already queued. Returns false if no TTS engine is available. */
     suspend fun enqueue(text: String, language: String, rate: Float, messageId: String? = null): Boolean {
-        val t = engine() ?: return false
         if (text.isBlank()) return true
+        val s = settings.current()
+        val voice = NaturalVoices.byId(s.ttsVoice)?.takeIf { NaturalVoices.isInstalled(context, it) }
+        if (voice != null) {
+            val t = engine()          // the phone's voice is still used, in order, for text the natural voice can't speak
+            messageId?.let { _speakingId.value = it }
+            enqueueNatural(text, voice, s.ttsSpeaker, rate, language, t)
+            return true
+        }
+        val t = engine() ?: return false
         val loc = if (language.isBlank()) Locale.getDefault() else Locale.forLanguageTag(language)
         if (t.voice?.locale != loc) runCatching { t.setLanguage(loc) }
         t.setSpeechRate(rate)
@@ -256,11 +278,81 @@ class SpeechOutput @Inject constructor(@ApplicationContext private val context: 
         return true
     }
 
+    private fun enqueueNatural(text: String, voice: NaturalVoice, speaker: Int, rate: Float, language: String, system: TextToSpeech?) {
+        val gen = generation.get()
+        // Split long text into sentences so the first one starts playing quickly.
+        val parts = text.split(Regex("(?<=[.!?।])\\s+")).map { it.trim() }.filter { it.isNotEmpty() }.flatMap { it.chunked(400) }
+        parts.forEach { part ->
+            pending.incrementAndGet(); _speaking.value = true
+            synthExec.execute {
+                if (generation.get() != gen) { finished(); return@execute }
+                val audio = if (NaturalVoices.canSpeak(voice, part) && neural.load(voice, 2)) neural.generate(part, speaker.coerceIn(0, voice.speakers - 1), rate) else null
+                playExec.execute {
+                    try {
+                        if (generation.get() != gen) return@execute
+                        if (audio != null) play(audio, gen) else if (system != null) speakSystemAndWait(system, part, language, rate)
+                    } finally { finished() }
+                }
+            }
+        }
+    }
+
+    private fun play(a: Speech, gen: Int) {
+        val t = track?.takeIf { it.sampleRate == a.sampleRate } ?: run {
+            track?.release()
+            val min = android.media.AudioTrack.getMinBufferSize(a.sampleRate, android.media.AudioFormat.CHANNEL_OUT_MONO, android.media.AudioFormat.ENCODING_PCM_FLOAT)
+            android.media.AudioTrack.Builder()
+                .setAudioAttributes(android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_ASSISTANT)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                .setAudioFormat(android.media.AudioFormat.Builder().setEncoding(android.media.AudioFormat.ENCODING_PCM_FLOAT)
+                    .setSampleRate(a.sampleRate).setChannelMask(android.media.AudioFormat.CHANNEL_OUT_MONO).build())
+                .setBufferSizeInBytes(maxOf(min, a.sampleRate * 4 / 2)).setTransferMode(android.media.AudioTrack.MODE_STREAM).build()
+                .also { track = it }
+        }
+        if (t.playState != android.media.AudioTrack.PLAYSTATE_PLAYING) t.play()
+        val start = t.playbackHeadPosition
+        var off = 0
+        while (off < a.samples.size && generation.get() == gen) {
+            val n = t.write(a.samples, off, minOf(2048, a.samples.size - off), android.media.AudioTrack.WRITE_BLOCKING)
+            if (n <= 0) break
+            off += n
+        }
+        // write() returns when the audio is buffered; wait until it has actually been heard.
+        val end = start + off
+        var guard = 0
+        while (generation.get() == gen && t.playbackHeadPosition < end && guard++ < 1500) Thread.sleep(10)
+    }
+
+    private fun speakSystemAndWait(t: TextToSpeech, text: String, language: String, rate: Float) {
+        val loc = if (language.isBlank()) Locale.getDefault() else Locale.forLanguageTag(language)
+        if (t.voice?.locale != loc) runCatching { t.setLanguage(loc) }
+        t.setSpeechRate(rate)
+        val id = "p" + ids.incrementAndGet()
+        val latch = java.util.concurrent.CountDownLatch(1); waiters[id] = latch
+        t.speak(text, TextToSpeech.QUEUE_ADD, null, id)
+        latch.await(30, java.util.concurrent.TimeUnit.SECONDS)
+    }
+
+    /** Plays a short sample in [voice] (Settings preview). */
+    suspend fun preview(voice: NaturalVoice, speaker: Int, rate: Float) {
+        stop()
+        val sample = if (voice.language == "hi") "नमस्ते! मैं आपकी मदद के लिए यहाँ हूँ। आज मैं आपके लिए क्या कर सकती हूँ?"
+            else "Hi! I'm your assistant, running right here on your phone. What would you like to talk about?"
+        val t = engine()
+        enqueueNatural(sample, voice, speaker, rate, if (voice.language == "hi") "hi-IN" else "en-IN", t)
+    }
+
+    /** Frees the neural voice (≈ 100–200 MB) when memory is low or the voice changes. */
+    fun releaseVoice() { synthExec.execute { neural.release() } }
+
     /** Called once the queue empties (used by voice conversation to start listening again). */
     fun onIdle(cb: () -> Unit) { if (pending.get() == 0 && !_speaking.value) cb() else idle = cb }
 
     fun stop() {
         idle = null
+        generation.incrementAndGet()
+        track?.let { runCatching { it.pause(); it.flush() } }
+        waiters.values.forEach { it.countDown() }; waiters.clear()
         tts?.stop(); pending.set(0); _speaking.value = false; _speakingId.value = null
     }
 }

@@ -26,6 +26,7 @@ class LocalAiApp : Application() {
     @Inject lateinit var engine: LlamaEngine
     @Inject lateinit var settings: SettingsRepository
     @Inject lateinit var device: DeviceCapabilityService
+    @Inject lateinit var speech: com.localai.app.data.voice.SpeechOutput
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var unloadJob: Job? = null
@@ -64,6 +65,7 @@ class LocalAiApp : Application() {
         if (processName().endsWith(":ocr")) return
         super.onTrimMemory(level)
         if (level >= ComponentCallbacks2.TRIM_MEMORY_COMPLETE && !engine.generating.value) scope.launch { engine.unload() }
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN && !speech.speaking.value) speech.releaseVoice()
     }
 
     companion object { const val CHANNEL_DOWNLOADS = "downloads"; const val CHANNEL_DIGEST = "digest" }

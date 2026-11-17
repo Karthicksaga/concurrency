@@ -53,7 +53,10 @@ window.LA = window.LA || {};
         ${C.sectionH('Voice')}<div class="list">
           ${row('Voice language', 'For dictation, voice conversation and reading aloud. Speech is recognised on the phone when its offline speech pack is installed.', `<select class="select" id="s-vlang" data-change="vlang" style="max-width:150px">${LA.VOICE_LANGS.map(([k, l]) => `<option value="${k}" ${st.voiceLang === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
           ${row('Speaking speed', '', C.seg('Speaking speed', [['0.8', 'Slow'], ['1', 'Normal'], ['1.25', 'Fast']], String(st.speechRate || 1), 'vrate'))}
-          ${row('Read replies aloud', 'Speak every answer in chat.', C.sw('s-read', st.readAloud, 'readaloud', 'Read replies aloud'))}</div>
+          ${row('Read replies aloud', 'Speak every answer in chat.', C.sw('s-read', st.readAloud, 'readaloud', 'Read replies aloud'))}
+          ${row('Interrupt by talking', 'In voice mode, just start speaking while the assistant talks.', C.seg('Interrupt by talking', [['OFF', 'Off'], ['NORMAL', 'Normal'], ['SENSITIVE', 'Sensitive']], st.bargeIn || 'NORMAL', 'barge'))}
+          <div class="li" style="display:block"><div class="t small">Voice</div><div class="s">Natural voices run on the phone (downloaded once). The phone's voice reads other languages, like Tamil.</div>
+            <div class="list" style="margin-top:8px">${[{ id: '', name: "Phone's voice", d: 'All languages · Android text-to-speech' }].concat(LA.NATURAL).map((v) => { const inst = !v.id || (st.voices || []).includes(v.id); return `<div class="li" style="padding:8px 0"><div class="grow"><div class="t small">${esc(v.name)}</div><div class="s">${esc(v.d)}${v.mb ? ' · ' + v.mb + ' MB' : ''}</div></div>${inst ? `${v.id ? `<button class="link" data-action="v-prev" data-v="${v.id}">Preview</button>` : ''}<input type="radio" name="tts" ${(st.ttsVoice || '') === v.id ? 'checked' : ''} data-action="v-use" data-v="${v.id}" aria-label="Use ${esc(v.name)}">` : `<button class="btn btn-tonal btn-sm" data-action="v-dl" data-v="${v.id}">Download</button>`}</div>`; }).join('')}</div></div></div>
         ${C.sectionH('Knowledge & memory')}<div class="list">
           ${row('Index only while charging', 'Pauses background indexing on battery.', C.sw('s-charge', st.indexOnCharge, 'charge', 'Index only while charging'))}
           ${row('Approve new memories', 'Agents propose memories; you decide what is saved.', C.sw('s-mem', st.memoryApproval, 'memappr', 'Approve new memories'))}</div>
@@ -79,6 +82,10 @@ window.LA = window.LA || {};
     actions: {
       look: (el) => { LA.S.look = el.getAttribute('data-v'); LA.applyLook(); LA.save(); LA.refresh(); },
       dev: (el) => { LA.S.deviceId = el.getAttribute('data-v'); LA.S.profiles = {}; LA.save(); LA.refresh(); LA.toast('Simulating ' + LA.device().label); },
+      barge: (el) => { LA.S.settings.bargeIn = el.getAttribute('data-v'); LA.save(); LA.refresh(); },
+      'v-dl': (el) => { const id = el.getAttribute('data-v'); const s = LA.S.settings; s.voices = [...new Set([...(s.voices || []), id])]; s.ttsVoice = id; LA.save(); LA.refresh(); LA.toast('Voice downloaded and checked (simulated)'); },
+      'v-use': (el) => { LA.S.settings.ttsVoice = el.getAttribute('data-v'); LA.save(); LA.refresh(); },
+      'v-prev': (el) => { const v = LA.NATURAL.find((x) => x.id === el.getAttribute('data-v')); LA.speech.speak(v.id === 'priyamvada' || v.id === 'rohan' ? 'नमस्ते! मैं आपकी मदद के लिए यहाँ हूँ।' : "Hi! I'm your assistant, running right here on your phone.", 'prev'); LA.toast('Preview: ' + esc(v.name) + ' (in the app this is the real voice)'); },
       vrate: (el) => { LA.S.settings.speechRate = +el.getAttribute('data-v'); LA.save(); LA.refresh(); },
       threads: (el) => { LA.S.settings.threads = el.getAttribute('data-v'); LA.save(); LA.refresh(); },
       kv: (el) => { LA.S.settings.kvType = el.getAttribute('data-v'); LA.S.profiles = {}; LA.save(); LA.refresh(); },
