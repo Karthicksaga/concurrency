@@ -66,6 +66,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import com.localai.app.core.designsystem.Banner
 import com.localai.app.core.designsystem.FlowRowSimple
+import com.localai.app.core.designsystem.GoneScreen
+import com.localai.app.core.designsystem.Loaded
 import com.localai.app.core.designsystem.KeyValue
 import com.localai.app.core.designsystem.La
 import com.localai.app.core.designsystem.LaCard
@@ -309,7 +311,7 @@ fun KbFormScreen(nav: NavController, vm: KnowledgeViewModel = hiltViewModel()) {
 class KbDetailViewModel @Inject constructor(savedState: SavedStateHandle, val service: KnowledgeService, dao: KnowledgeDao, private val chat: ChatService,
     private val agents: AgentRepository) : ViewModel() {
     val id: String = checkNotNull(savedState["id"])
-    val kb = dao.observeKb(id).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    val kb = dao.observeKb(id).map { Loaded(it) }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     val docs = dao.observeDocs(id).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     var results by mutableStateOf<List<RetrievedChunk>?>(null)
     var message by mutableStateOf<String?>(null)
@@ -323,7 +325,7 @@ class KbDetailViewModel @Inject constructor(savedState: SavedStateHandle, val se
         agents.all().filter { id in it.kbList }.forEach { agents.save(it.copy(kbIds = (it.kbList - id).joinToString(","))) }
         service.deleteKb(id); done()
     }
-    suspend fun ask(): String { val k = kb.value; return chat.newConversation(if (k?.scope == "AGENT") k.ownerAgentId else null, listOf(id), "Ask ${k?.name ?: "documents"}") }
+    suspend fun ask(): String { val k = kb.value?.value; return chat.newConversation(if (k?.scope == "AGENT") k.ownerAgentId else null, listOf(id), "Ask ${k?.name ?: "documents"}") }
 }
 
 @Composable
@@ -341,7 +343,7 @@ fun KbDetailScreen(nav: NavController, vm: KbDetailViewModel = hiltViewModel()) 
     var q by rememberSaveable { mutableStateOf("") }
     var confirmDelete by remember { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { if (it.isNotEmpty()) vm.add(it) }
-    val k = kb ?: return
+    val k = (kb ?: return).value ?: run { GoneScreen("This knowledge base was deleted.") { nav.popBackStack() }; return }
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") }
@@ -385,7 +387,7 @@ fun KbDetailScreen(nav: NavController, vm: KbDetailViewModel = hiltViewModel()) 
     }
     if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false }, title = { Text("Delete ${k.name}?") },
         text = { Text("All documents, chunks and search vectors are permanently removed. Chats keep their text but lose source links.") },
-        confirmButton = { TextButton(onClick = { confirmDelete = false; vm.delete { nav.goTab("knowledge") } }) { Text("Delete", color = La.colors.bad) } },
+        confirmButton = { TextButton(onClick = { confirmDelete = false; vm.delete { nav.popBackStack() } }) { Text("Delete", color = La.colors.bad) } },
         dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } })
 }
 
@@ -394,7 +396,7 @@ fun KbDetailScreen(nav: NavController, vm: KbDetailViewModel = hiltViewModel()) 
 @HiltViewModel
 class DocumentViewModel @Inject constructor(savedState: SavedStateHandle, val service: KnowledgeService, dao: KnowledgeDao, private val chat: ChatService) : ViewModel() {
     val id: String = checkNotNull(savedState["id"])
-    val doc = dao.observeDoc(id).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    val doc = dao.observeDoc(id).map { Loaded(it) }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     val chunks = dao.observeChunks(id, 30).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     private val kdao = dao
     fun reindex() = viewModelScope.launch { service.reindex(id) }
@@ -408,7 +410,7 @@ fun DocumentScreen(nav: NavController, vm: DocumentViewModel = hiltViewModel()) 
     val chunks by vm.chunks.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var confirm by remember { mutableStateOf(false) }
-    val d = doc ?: return
+    val d = (doc ?: return).value ?: run { GoneScreen("This document was removed.") { nav.popBackStack() }; return }
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") }

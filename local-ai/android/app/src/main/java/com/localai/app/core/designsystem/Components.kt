@@ -156,3 +156,16 @@ fun fmtAgo(ts: Long): String {
     val m = (System.currentTimeMillis() - ts) / 60000
     return when { m < 1 -> "just now"; m < 60 -> "$m min ago"; m < 1440 -> "${m / 60} h ago"; m < 2880 -> "yesterday"; else -> "${m / 1440} days ago" }
 }
+
+/** Distinguishes "still loading" (null holder) from "loaded but gone" (holder with null value). */
+data class Loaded<T>(val value: T?)
+
+/** Shown when the item a screen displays was deleted (e.g. after deleting it, or from a stale back stack). */
+@Composable
+fun GoneScreen(message: String, onBack: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Spacer(Modifier.height(48.dp))
+        Text(message, style = MaterialTheme.typography.titleMedium)
+        androidx.compose.material3.Button(onClick = onBack) { Text("Go back") }
+    }
+}

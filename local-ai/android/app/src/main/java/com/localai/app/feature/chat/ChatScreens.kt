@@ -2,6 +2,7 @@ package com.localai.app.feature.chat
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.AccountTree
@@ -200,6 +201,8 @@ class ChatViewModel @Inject constructor(
         notice = if (n == 0) "Nothing new to remember from this chat." else "$n memor${if (n == 1) "y" else "ies"} proposed. Review them in Agent memory."
     }
     fun delete(onDone: () -> Unit) = viewModelScope.launch { chat.delete(id); onDone() }
+    // Leaving a chat without sending anything should not leave an empty "New chat" behind.
+    override fun onCleared() { chat.discardIfEmpty(id) }
 }
 
 @Composable
@@ -314,7 +317,7 @@ fun ChatScreen(nav: NavController, vm: ChatViewModel = hiltViewModel()) {
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().background(La.colors.surface1).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth().background(La.colors.surface1).horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(selectedKbs.isNotEmpty(), { showKbs = true }, { Text(if (selectedKbs.isEmpty()) "Knowledge" else if (selectedKbs.size == 1) kbs.firstOrNull { it.id == selectedKbs[0] }?.name ?: "1 knowledge base" else "${selectedKbs.size} knowledge bases", maxLines = 1) },
                 leadingIcon = { Icon(Icons.AutoMirrored.Outlined.MenuBook, null, Modifier.size(16.dp)) })
             FilterChip(c?.agentId != null, { showAgents = true }, { Text(when { supervisor -> "Agent mode: Supervisor"; agent != null -> agent.name; else -> "Agent mode off" }, maxLines = 1) },

@@ -74,7 +74,9 @@ class ChatService @Inject constructor(
     val toolRequest: StateFlow<ToolRequest?> = _toolRequest.asStateFlow()
     private var job: Job? = null
 
-    init { scope.launch { dao.markInterrupted() } }
+    init { scope.launch { dao.markInterrupted(); dao.deleteEmptyConversations() } }
+
+    fun discardIfEmpty(id: String) { scope.launch { if (_live.value?.conversationId != id && dao.messages(id).isEmpty()) dao.deleteConversation(id) } }
 
     suspend fun newConversation(agentId: String? = null, kbIds: List<String> = emptyList(), title: String = "New chat"): String {
         val s = settings.current()

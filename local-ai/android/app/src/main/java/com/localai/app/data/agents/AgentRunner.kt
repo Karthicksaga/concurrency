@@ -122,6 +122,7 @@ class AgentRunner @Inject constructor(
             progress(AgentProgress.Phase("Searching your documents…"))
             val hits = knowledge.retrieve(query, req.kbIds, if (policy.lite) 4 else 6)
             val pair = KnowledgeService.sourcesBlock(hits, (ctx * 4 * 0.35).toInt()); sourcesText = pair.first; refs = pair.second
+            if (hits.isEmpty()) sourcesText = "The user selected their documents for this question, but no passage matched. Say that the documents don't seem to cover it, and answer from general knowledge only if helpful, clearly labelled."
         }
 
         // 5. Final answer, streamed

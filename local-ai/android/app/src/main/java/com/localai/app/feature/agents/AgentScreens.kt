@@ -75,6 +75,10 @@ import androidx.navigation.NavController
 import com.localai.app.core.designsystem.AgentAvatar
 import com.localai.app.core.designsystem.Banner
 import com.localai.app.core.designsystem.FlowRowSimple
+import com.localai.app.core.designsystem.GoneScreen
+import com.localai.app.core.designsystem.Loaded
+import androidx.compose.foundation.horizontalScroll
+import kotlinx.coroutines.flow.map
 import com.localai.app.core.designsystem.HUES
 import com.localai.app.core.designsystem.KeyValue
 import com.localai.app.core.designsystem.La
@@ -163,8 +167,8 @@ fun AgentsScreen(nav: NavController, vm: AgentsViewModel = hiltViewModel()) {
                 }
             }
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("all" to "All", "memory" to "With memory", "failed" to "Needs attention").forEach { (k, l) -> FilterChip(filter == k, { filter = k }, { Text(l) }) }
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("all" to "All", "memory" to "With memory", "failed" to "Needs attention").forEach { (k, l) -> FilterChip(filter == k, { filter = k }, { Text(l, maxLines = 1, softWrap = false) }) }
                 }
             }
             if (agents.isEmpty()) item {
@@ -340,7 +344,7 @@ class AgentDetailViewModel @Inject constructor(
     private val chat: ChatService, val tools: ToolRegistry,
 ) : ViewModel() {
     val id: String = checkNotNull(savedState["id"])
-    val agent = repo.agent(id).state(this, null)
+    val agent = repo.agent(id).map { Loaded(it) }.state(this, null)
     val kbs = kdao.observeKbs().state(this, emptyList())
     val memories = memDao.observe(id).state(this, emptyList<MemoryEntity>())
     val permissions = tools.permissions.state(this, emptyMap())
@@ -359,7 +363,7 @@ fun AgentDetailScreen(nav: NavController, vm: AgentDetailViewModel = hiltViewMod
     val perms by vm.permissions.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var confirmDelete by remember { mutableStateOf(false) }
-    val agent = a ?: return
+    val agent = (a ?: return).value ?: run { GoneScreen("This agent was deleted.") { nav.popBackStack() }; return }
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") }
@@ -422,7 +426,7 @@ fun AgentDetailScreen(nav: NavController, vm: AgentDetailViewModel = hiltViewMod
     }
     if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false }, title = { Text("Delete ${agent.name}?") },
         text = { Text("The agent and its ${mems.size} memories are removed from this phone. Chats are kept.") },
-        confirmButton = { TextButton(onClick = { confirmDelete = false; vm.delete { nav.goTab("agents") } }) { Text("Delete", color = La.colors.bad) } },
+        confirmButton = { TextButton(onClick = { confirmDelete = false; vm.delete { nav.popBackStack() } }) { Text("Delete", color = La.colors.bad) } },
         dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } })
 }
 

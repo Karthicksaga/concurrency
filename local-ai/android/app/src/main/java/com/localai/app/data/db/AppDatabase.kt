@@ -99,6 +99,7 @@ interface ChatDao {
     @Query("UPDATE message SET status = 'STOPPED' WHERE status = 'STREAMING'") suspend fun markInterrupted()
     @Query("SELECT * FROM conversation WHERE agentId = :agentId ORDER BY updatedAt DESC LIMIT 5") suspend fun byAgent(agentId: String): List<ConversationEntity>
     @Query("DELETE FROM conversation") suspend fun deleteAllConversations()
+    @Query("DELETE FROM conversation WHERE id NOT IN (SELECT DISTINCT conversationId FROM message)") suspend fun deleteEmptyConversations()
     @Query("DELETE FROM message") suspend fun deleteAllMessages()
 }
 

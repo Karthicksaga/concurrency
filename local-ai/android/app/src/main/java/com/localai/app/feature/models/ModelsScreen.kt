@@ -4,6 +4,8 @@ import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -106,9 +108,9 @@ fun ModelsScreen(nav: NavController, vm: ModelsViewModel = hiltViewModel()) {
                     if (p >= 0f) LinearProgressIndicator(progress = { p }, Modifier.fillMaxWidth()) else LinearProgressIndicator(Modifier.fillMaxWidth()) }
             } }
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("fits" to "Fits this phone", "installed" to "Installed", "embed" to "Embedding", "all" to "All").forEach { (k, l) ->
-                        FilterChip(selected = filter == k, onClick = { filter = k }, label = { Text(l) })
+                        FilterChip(selected = filter == k, onClick = { filter = k }, label = { Text(l, maxLines = 1, softWrap = false) })
                     }
                 }
             }
