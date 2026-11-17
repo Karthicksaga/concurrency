@@ -190,3 +190,24 @@ Tiered recommendations (sample guidance; replaced by measured data after beta):
 4. Verify state save/restore for prefix caching.
 5. Verify embedding models (multilingual-e5-small, bge-small) run correctly; compare vectors with reference implementation (cosine ≥ 0.99).
 6. OpenCL backend on Adreno 750: correctness self-test and speedup.
+
+## 12. Lite mode (4 GB and 6 GB phones) — approved 2026-11-17
+
+Lite mode turns on automatically when the phone reports less than ~6.6 GiB of RAM, and can be forced on or off in Settings. Phones report less than their advertised RAM (a "4 GB" phone shows ~3.6 GiB), so tiers use these thresholds on `ActivityManager.MemoryInfo.totalMem`:
+
+| Tier | Reported RAM | Model budget (0.5 × RAM − 0.4) | Default / max context | Batch | Threads | Max reply | Release model after backgrounding | Recommended model |
+|---|---|---|---|---|---|---|---|---|
+| 4 GB · Lite | < 4.6 GiB | ≈ 1.4 GiB | 2K / 4K | 128 | ≤ 4 | 512 tokens | 30 s | Llama 3.2 1B Q4_K_M (Qwen3 0.6B, Gemma 3 1B also fit) |
+| 6 GB · Lite | 4.6 – 6.6 GiB | ≈ 2.4 GiB | 2K / 4K | 256 | ≤ 4 | 768 tokens | 120 s | Qwen3 1.7B Q4_K_M (SmolLM2 1.7B; Llama 3.2 3B is a tight fit) |
+| 8 GB | 6.6 – 9 GiB | ≈ 3.4 GiB | 4K / 8K | 512 | ≤ 6 | 1024 | 5 min | Llama 3.2 3B |
+| 12 GB | 9 – 13 GiB | ≈ 5.4 GiB | 8K / 16K | 512 | ≤ 8 | 1024 | 5 min | Qwen3 4B |
+| 16 GB+ | ≥ 13 GiB | ≥ 7.4 GiB | 8K / 32K | 512 | ≤ 8 | 1024 | 5 min | Qwen3 4B / Llama 3.1 8B |
+
+What lite mode changes:
+
+- **Catalog:** filtered to models that fit by default; small "Lite" models (0.6–1.7B) are listed first. Larger models stay downloadable after an explicit warning.
+- **Memory:** smaller compute buffers (batch 128/256), q8_0 KV cache, 2K context, `mmap` weights, and an early unload after the app goes to the background. `onTrimMemory(COMPLETE)` unloads immediately.
+- **CPU:** threads limited to the performance cores (often only 2 on budget SoCs). llama.cpp is built with all ARM CPU variants and picks the best one at runtime (`GGML_BACKEND_DL` + `GGML_CPU_ALL_VARIANTS`), so phones without dotprod/i8mm still work.
+- **Features (future milestones):** knowledge-base indexing only while charging, no co-resident embedding model, multi-agent workflows limited to 3 steps.
+
+Expected experience (estimates until measured on devices): 4 GB phones ~5–10 tok/s with 1B models; 6 GB phones ~6–12 tok/s with 1.7B models.

@@ -1,6 +1,6 @@
 # ADR-0002: llama.cpp as the primary inference runtime
 
-**Status:** Proposed
+**Status:** Accepted (2026-11-17)
 
 **Context.** Users expect to run popular open models and import GGUF files. CPU inference must work on every supported device; GPU/NPU acceleration is inconsistent across SoCs. Agents need reliable structured output from small models.
 

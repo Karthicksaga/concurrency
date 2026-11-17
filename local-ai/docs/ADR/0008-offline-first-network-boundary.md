@@ -1,6 +1,6 @@
 # ADR-0008: Offline-first with a single network boundary
 
-**Status:** Proposed
+**Status:** Accepted (2026-11-17)
 
 **Context.** The privacy promise must be verifiable, not just stated.
 

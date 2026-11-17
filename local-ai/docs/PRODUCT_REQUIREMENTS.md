@@ -151,7 +151,7 @@ Legend: **MVP** = first public release · **V1.x** = planned follow-up · **Exp*
 
 | Area | Target (MVP) |
 |---|---|
-| Supported devices | arm64-v8a, Android 12+ (API 31), ≥8 GB RAM recommended, 6 GB "limited" mode with ≤2B models |
+| Supported devices | arm64-v8a, Android 8.0+ (API 26); 8 GB+ recommended; 4 GB and 6 GB phones run in Lite mode with 0.6–1.7B models (ADR-0011) |
 | Time to first token (3–4B Q4, 512-token prompt, 8 Gen 2 class) | ≤ 3 s |
 | Generation speed (same) | ≥ 8 tok/s CPU; UI never blocks |
 | Cold model load (2.5 GB mmap) | ≤ 6 s on UFS 3.1 |

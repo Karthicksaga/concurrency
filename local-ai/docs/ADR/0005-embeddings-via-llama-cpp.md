@@ -1,6 +1,6 @@
 # ADR-0005: Embeddings through llama.cpp with a small GGUF model
 
-**Status:** Proposed
+**Status:** Accepted (2026-11-17)
 
 **Context.** RAG and agent memory need embeddings on device. Adding ONNX Runtime adds a second native runtime (~8–15 MB) and a second model format.
 

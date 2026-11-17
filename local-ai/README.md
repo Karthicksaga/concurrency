@@ -1,6 +1,10 @@
-# LOCAL AI — Product Blueprint & Interactive Prototype
+# LOCAL AI — Product Blueprint, Prototype and Android App
 
-**Phase:** Planning and prototyping complete (Phases 1–8). **No production code has been written.** This folder is the review package for approval before implementation starts.
+**Status (2026-11-17):** Blueprint **approved**. Implementation has started with **Milestone 1** (on-device inference, model manager, chat) plus **Lite mode for 4 GB and 6 GB phones** — see [`android/`](android/README.md).
+
+**Try it on your phone:** every push that changes `local-ai/android/` builds a test APK with GitHub Actions and publishes it as the **`local-ai-latest`** pre-release on the repository's Releases page. Open that page on the phone, download `LocalAI-0.1.N.apk` and install it (Android 8.0+, 64-bit ARM).
+
+The rest of this page is the approved planning package.
 
 LOCAL AI is a private, offline-first Android app that runs open-weight LLMs on the phone and turns them into a personal AI environment: chat, specialised agents, supervised multi-agent workflows, local knowledge bases with retrieval (RAG), typed tools and user-controlled memory.
 
@@ -189,6 +193,8 @@ Details: [`docs/IMPLEMENTATION_ROADMAP.md`](docs/IMPLEMENTATION_ROADMAP.md).
 About **33 weeks to beta (~8 months)** for 2 Android engineers, 1 native/ML engineer, a part-time designer and QA from M2. Highest-risk areas: native runtime integration (device variance, crashes), knowledge engine (PDF variance, multilingual embeddings), and small-model reliability in multi-agent orchestration. Medium: downloads, chat rendering performance, tools, memory UX, thermal behaviour.
 
 ## 12. Questions requiring your approval
+
+**Resolved on 2026-11-17:** the design was approved, and 4 GB / 6 GB support was added as Lite mode (question 2 is now minSdk **26**, arm64 only; see ADR-0011). The remaining questions still apply to later milestones.
 
 1. **Runtime:** approve llama.cpp as the primary runtime, with LiteRT-LM/ExecuTorch evaluated later for NPU?
 2. **minSdk 31 (Android 12), arm64 only?** Lowering to API 29 adds test cost for few capable devices.

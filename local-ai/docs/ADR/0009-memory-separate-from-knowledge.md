@@ -1,6 +1,6 @@
 # ADR-0009: Agent memory is separate from knowledge, approval by default
 
-**Status:** Proposed
+**Status:** Accepted (2026-11-17)
 
 **Context.** Mixing learned "memories" with user documents confuses provenance and makes deletion unreliable. Small models also produce noisy memories.
 

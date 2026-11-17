@@ -1,6 +1,6 @@
 # ADR-0003: Logical agents share one loaded model
 
-**Status:** Proposed
+**Status:** Accepted (2026-11-17)
 
 **Context.** A 4B Q4 model needs ~3–3.5 GB at 4k context. Two such models exceed the safe budget on 8 GB devices, and parallel decoding on phone CPUs gives little speedup because one decode already saturates performance cores.
 

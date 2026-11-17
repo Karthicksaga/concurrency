@@ -11,12 +11,12 @@ window.LA = window.LA || {};
   LA.load = function () {
     let saved = null;
     try { saved = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { saved = null; }
-    LA.S = saved && saved.v === 4 ? saved.s : LA.seed();
+    LA.S = saved && saved.v === 5 ? saved.s : LA.seed();
   };
   let saveTimer;
   LA.save = function () {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify({ v: 4, s: LA.S })); } catch (e) { /* storage blocked: keep in memory */ } }, 150);
+    saveTimer = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify({ v: 5, s: LA.S })); } catch (e) { /* storage blocked: keep in memory */ } }, 150);
   };
   LA.reset = function () { LA.S = LA.seed(); LA.S.onboarded = true; LA.wf && LA.wf.reset(); LA.save(); LA.applyLook(); LA.go('home'); LA.toast('Demo data restored'); };
   LA.applyLook = function () { document.documentElement.setAttribute('data-look', LA.S.look === 'light' ? 'light' : 'dark'); };
@@ -126,7 +126,7 @@ window.LA = window.LA || {};
   function panel() {
     return `<aside class="panel" aria-label="Prototype screen index"><h2>Screen index</h2><p>Interactive prototype of the LOCAL AI Android app. Everything here runs on mock data: no model, download, embedding or agent is real.</p>
       <ol>${SCREENS.map(([h, t]) => `<li><a href="#${h}">${t}</a></li>`).join('')}</ol>
-      <div class="note">Change the simulated device (8 / 12 / 16 GB) in Settings to see compatibility verdicts update.</div></aside>`;
+      <div class="note">Change the simulated device (4 / 6 / 8 / 12 / 16 GB; 4 and 6 GB use Lite mode) in Settings to see compatibility verdicts update.</div></aside>`;
   }
 
   window.addEventListener('hashchange', () => LA.render());

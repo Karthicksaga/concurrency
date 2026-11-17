@@ -63,6 +63,7 @@ window.LA = window.LA || {};
       const list = filtered(); const d = LA.device();
       return `${C.topbar({ title: 'Models', sub: `${d.label} · ≈${LA.usableGB(d).toFixed(1)} GB model budget`, actions: C.go('download', 'downloads', 'Downloads', n || '') + C.ib('upload', 'import', 'Import GGUF file') })}
       <div class="scroll"><div class="body">
+        ${d.lite ? `<div class="banner info">${I('info')}<span><b>Lite mode</b> · ${d.label}. Showing small models first, with a 2K context to save memory.</span></div>` : ''}
         <div class="search">${I('search')}<input id="model-search" placeholder="Search models" value="${esc(q)}" data-input="mq" aria-label="Search models"></div>
         <div class="row between wrap" style="gap:8px">${C.seg('Model type', [['all', 'Chat'], ['installed', 'Installed'], ['embed', 'Embedding']], tab, 'tab')}<button class="chip sm ${fits ? 'on' : ''}" data-action="fits">${I('check', 'icon-sm')}Fits this device</button></div>
         <div class="row between"><span class="small faint">${list.length} model${list.length === 1 ? '' : 's'} · curated GGUF catalog</span>${C.sample()}</div>

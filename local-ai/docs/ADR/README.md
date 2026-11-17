@@ -1,7 +1,7 @@
 # Architecture Decision Records
 
 Format: Context → Decision → Alternatives → Consequences. Status values: Proposed, Accepted, Superseded.
-All ADRs below are **Proposed** until you approve the blueprint.
+The blueprint was approved on 2026-11-17: ADRs 0001–0010 are **Accepted**. ADR-0011 records the lite-mode change made with the approval.
 
 | ADR | Title |
 |---|---|
@@ -15,3 +15,4 @@ All ADRs below are **Proposed** until you approve the blueprint.
 | [0008](0008-offline-first-network-boundary.md) | Offline-first with a single network boundary |
 | [0009](0009-memory-separate-from-knowledge.md) | Agent memory is separate from knowledge, approval by default |
 | [0010](0010-isolated-web-prototype.md) | Dependency-free web prototype, isolated from the Android codebase |
+| [0011](0011-lite-mode-and-min-sdk-26.md) | Lite mode for 4 GB / 6 GB phones and minSdk 26 (Accepted) |

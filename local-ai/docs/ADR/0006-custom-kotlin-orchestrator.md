@@ -1,6 +1,6 @@
 # ADR-0006: Custom Kotlin supervisor orchestrator with grammar-constrained JSON
 
-**Status:** Proposed
+**Status:** Accepted (2026-11-17)
 
 **Context.** Server agent frameworks are Python/JS-first and assume hosted models with large contexts and cheap parallel calls. On device we have one small model, limited context, and strict resource budgets.
 

@@ -1,6 +1,6 @@
 # ADR-0010: Dependency-free web prototype, isolated from the Android codebase
 
-**Status:** Proposed
+**Status:** Accepted (2026-11-17)
 
 **Context.** We need a high-fidelity, clickable prototype before committing to the Android build, viewable on any phone or laptop without tooling.
 

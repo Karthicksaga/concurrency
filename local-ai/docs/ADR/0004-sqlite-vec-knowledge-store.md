@@ -1,6 +1,6 @@
 # ADR-0004: Knowledge store — custom SQLite with sqlite-vec + FTS5
 
-**Status:** Proposed
+**Status:** Accepted (2026-11-17)
 
 **Context.** We need vector KNN plus keyword search, transactional writes with chunk text, and small footprint. Android's framework SQLite cannot load extensions; the AndroidX bundled driver does not support extension loading.
 

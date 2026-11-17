@@ -32,7 +32,7 @@ window.LA = window.LA || {};
     const p = LA.S.profiles[m.id];
     if (p) return p;
     const d = LA.device();
-    const ctx = m.purpose === 'embed' ? 512 : Math.min(m.ctxTrain, d.ramGB >= 12 ? 8192 : 4096);
+    const ctx = m.purpose === 'embed' ? 512 : Math.min(m.ctxTrain, d.lite ? 2048 : d.ramGB >= 12 ? 8192 : 4096);
     return { ctx, temp: 0.7, topP: 0.9, kv: LA.S.settings.kvType };
   };
   LA.estimate = (m, ctx, kv) => {
@@ -52,7 +52,9 @@ window.LA = window.LA || {};
   };
   LA.recRam = (m) => {
     const e = LA.estimate(m, 4096, 'q8_0').total;
-    for (const r of [6, 8, 12, 16, 24]) if (e <= (r * 0.5 - 0.4) * 0.85) return r;
+    const e2 = LA.estimate(m, 2048, 'q8_0').total;
+    for (const r of [4, 6]) if (e2 <= (r * 0.5 - 0.4) * 0.85) return r;
+    for (const r of [8, 12, 16, 24]) if (e <= (r * 0.5 - 0.4) * 0.85) return r;
     return 24;
   };
 

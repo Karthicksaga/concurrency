@@ -1,6 +1,6 @@
 # ADR-0007: Typed tools only; no model-generated code execution
 
-**Status:** Proposed
+**Status:** Accepted (2026-11-17)
 
 **Context.** Agents can be steered by prompt injection in documents. Executing generated code or shell commands on a personal device is an unacceptable risk.
 

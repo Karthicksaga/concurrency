@@ -1,6 +1,6 @@
 # ADR-0001: Native Android with Kotlin, Compose and Material 3
 
-**Status:** Proposed
+**Status:** Accepted (2026-11-17)
 
 **Context.** The app needs tight control over native memory, threads, foreground services, thermal APIs and JNI. Cross-platform frameworks (Flutter, React Native, KMP with Compose Multiplatform) add a bridge between UI and the native runtime and lag on new Android APIs.
 
