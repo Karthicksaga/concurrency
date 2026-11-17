@@ -49,7 +49,8 @@ object TextExtractor {
         DocKind.PDF -> pdf(context, file, ocrLangs, maxOcrPages)
         DocKind.IMAGE -> {
             if (ocrLangs == null) throw ExtractionException("Text recognition is needed for photos.")
-            val r = kotlinx.coroutines.runBlocking { com.localai.app.data.ocr.Ocr.recognizeFile(context, file, ocrLangs) }
+            val r = try { kotlinx.coroutines.runBlocking { com.localai.app.data.ocr.Ocr.recognizeFile(context, file, ocrLangs) } }
+                catch (e: com.localai.app.data.ocr.OcrCrashedException) { throw ExtractionException(e.message ?: "Text recognition failed on this file.") }
             if (r == null || r.text.count { it.isLetterOrDigit() } < 12) throw ExtractionException("No readable text found in this photo.")
             Extracted(listOf(Section(r.text, "photo")), 1)
         }
@@ -95,7 +96,8 @@ object TextExtractor {
             if (out.sumOf { it.text.length } < 20) {
                 // Scanned PDF: no text layer. Read the pages with on-device text recognition.
                 if (ocrLangs == null) throw ExtractionException("No text layer found (scanned PDF). Turn on text recognition in Settings.")
-                val pagesText = kotlinx.coroutines.runBlocking { com.localai.app.data.ocr.Ocr.recognizePdf(context, file, ocrLangs, maxOcrPages) }
+                val pagesText = try { kotlinx.coroutines.runBlocking { com.localai.app.data.ocr.Ocr.recognizePdf(context, file, ocrLangs, maxOcrPages) } }
+                    catch (e: com.localai.app.data.ocr.OcrCrashedException) { throw ExtractionException(e.message ?: "Text recognition failed on this scan.") }
                 if (pagesText.sumOf { it.second.length } < 20) throw ExtractionException("No readable text found, even with text recognition. The scan may be too blurry.")
                 return Extracted(pagesText.map { (p, t) -> Section(t, "p. $p (scanned)") }, pages)
             }

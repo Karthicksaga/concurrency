@@ -33,7 +33,9 @@ object Images {
     suspend fun import(context: Context, uri: Uri): File = withContext(Dispatchers.IO) {
         val cr = context.contentResolver
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        cr.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) } ?: error("Cannot open the image.")
+        // With inJustDecodeBounds the decoder returns null by design; only a missing stream is an error.
+        val stream = cr.openInputStream(uri) ?: error("Cannot open the image.")
+        stream.use { BitmapFactory.decodeStream(it, null, bounds) }
         require(bounds.outWidth > 0 && bounds.outHeight > 0) { "This file is not an image Android can read." }
         val opts = BitmapFactory.Options().apply { inSampleSize = sampleSize(bounds.outWidth, bounds.outHeight, STORE_MAX) }
         var bmp = cr.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) } ?: error("Cannot decode the image.")

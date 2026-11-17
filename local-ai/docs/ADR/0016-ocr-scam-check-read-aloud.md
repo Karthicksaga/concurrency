@@ -65,6 +65,13 @@ Both need text recognition (OCR). OCR also fixes two old gaps: scanned PDFs in k
   - The explanation is read aloud automatically.
 - Works without a model (OCR + read aloud). The explanation needs a chat model.
 
+**Update (0.1.10, 2026-11-17).** On the owner's phone, linking a "Documents" folder with ~130 WhatsApp photos crashed the app while indexing. The cause was almost certainly native: every Java exception was already caught, so it was most likely a Tesseract/Leptonica crash on one of the photos. Changes:
+- OCR now runs in a separate `:ocr` process (`OcrService`, Messenger IPC). If that process dies, the file is marked "Text recognition stopped on this file" and the app keeps running.
+- Decoded images are capped at 6 MP, and absurd dimensions are refused.
+- Linked-folder sync no longer imports photos (they are usually pictures, not documents). Photos already queued that way are dropped. Photos you add yourself are still read.
+- A local crash report (Java stack trace, or Android's exit reason for native crashes) is offered on the next start.
+- The same release fixes a bug that made every photo import fail with "Cannot open the image.": with `inJustDecodeBounds` the decoder returns null by design, and the code treated that as an error.
+
 **Consequences.**
 - The APK grows from 16.3 MB to 21.5 MB: Tesseract and the English pack.
 - One new download host, for language packs only.

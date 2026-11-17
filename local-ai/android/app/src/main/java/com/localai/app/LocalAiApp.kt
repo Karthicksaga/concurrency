@@ -32,6 +32,9 @@ class LocalAiApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // The ":ocr" helper process only runs text recognition: no channels, schedules or crash dialogs there.
+        if (processName().endsWith(":ocr")) return
+        CrashReport.install(this)
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL_DOWNLOADS, "Model downloads and background work", NotificationManager.IMPORTANCE_LOW))
         getSystemService(NotificationManager::class.java).createNotificationChannel(
@@ -52,8 +55,13 @@ class LocalAiApp : Application() {
         })
     }
 
+    private fun processName(): String =
+        if (android.os.Build.VERSION.SDK_INT >= 28) getProcessName()
+        else runCatching { java.io.File("/proc/self/cmdline").readText().trimEnd('\u0000') }.getOrDefault(packageName)
+
     @Suppress("DEPRECATION")
     override fun onTrimMemory(level: Int) {
+        if (processName().endsWith(":ocr")) return
         super.onTrimMemory(level)
         if (level >= ComponentCallbacks2.TRIM_MEMORY_COMPLETE && !engine.generating.value) scope.launch { engine.unload() }
     }

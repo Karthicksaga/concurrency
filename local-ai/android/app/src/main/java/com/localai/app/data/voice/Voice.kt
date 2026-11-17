@@ -91,41 +91,65 @@ sealed interface HeardEvent {
     data class Partial(val text: String) : HeardEvent
     data class Final(val text: String) : HeardEvent
     data class Level(val rms: Float) : HeardEvent
-    data class Error(val message: String, val noSpeech: Boolean) : HeardEvent
+    data class Error(val message: String, val noSpeech: Boolean, val offerVoiceTyping: Boolean = false) : HeardEvent
     data object Ready : HeardEvent
 }
 
 /**
- * Speech-to-text through Android's SpeechRecognizer. Prefers the on-device recognizer (Android 12+ when the phone
- * has one installed), otherwise asks the system recognizer to work offline (EXTRA_PREFER_OFFLINE).
+ * Speech-to-text through Android's SpeechRecognizer, trying in order:
+ *  1. the on-device recognizer (Android 12+, when the phone has one),
+ *  2. the phone's default recognition service (offline preferred),
+ *  3. Google's recognition service directly (some phones, e.g. MIUI, set another default that fails).
+ * A route that fails with a service error (e.g. code 11 "server disconnected") is remembered and skipped next time.
+ * If every route fails, the error asks the UI to offer Android's own voice-typing screen (RecognizerIntent).
  * Must be used from the main thread.
  */
 @Singleton
 class SpeechInput @Inject constructor(@ApplicationContext private val context: Context) {
+    private enum class Route { ON_DEVICE, DEFAULT, GOOGLE }
     private var recognizer: SpeechRecognizer? = null
-    private var onDevice = false
     private val main = Handler(Looper.getMainLooper())
+    private val prefs = context.getSharedPreferences("speech", Context.MODE_PRIVATE)
+    private val googleService = android.content.ComponentName("com.google.android.googlequicksearchbox", "com.google.android.voicesearch.serviceapi.GoogleRecognitionService")
 
-    val available: Boolean get() = SpeechRecognizer.isRecognitionAvailable(context) || onDeviceAvailable()
+    private fun broken(r: Route) = prefs.getBoolean("broken_" + r.name, false)
+    private fun markBroken(r: Route) = prefs.edit().putBoolean("broken_" + r.name, true).apply()
+
     private fun onDeviceAvailable() = Build.VERSION.SDK_INT >= 31 && runCatching { SpeechRecognizer.isOnDeviceRecognitionAvailable(context) }.getOrDefault(false)
+    private fun googleInstalled() = runCatching { context.packageManager.getServiceInfo(googleService, 0); true }.getOrDefault(false)
+
+    private fun routes(): List<Route> = buildList {
+        if (onDeviceAvailable()) add(Route.ON_DEVICE)
+        if (SpeechRecognizer.isRecognitionAvailable(context)) add(Route.DEFAULT)
+        if (googleInstalled()) add(Route.GOOGLE)
+    }.filterNot { broken(it) }.ifEmpty { listOf(Route.DEFAULT, Route.GOOGLE).filter { it != Route.GOOGLE || googleInstalled() } }
+
+    /** Something can listen: a recognition service, or at least the voice-typing screen. */
+    val available: Boolean get() = routes().isNotEmpty() || voiceTypingIntent().resolveActivity(context.packageManager) != null
 
     /** True when the last session used the on-device recognizer (shown in the UI as "on-device"). */
     var lastWasOnDevice = false; private set
 
-    fun listen(language: String, onEvent: (HeardEvent) -> Unit) = main.post { start(language, onEvent, preferOnDevice = true) }
+    fun listen(language: String, onEvent: (HeardEvent) -> Unit) = main.post { start(language, onEvent, routes(), 0) }
 
-    private fun start(language: String, onEvent: (HeardEvent) -> Unit, preferOnDevice: Boolean) {
+    private fun start(language: String, onEvent: (HeardEvent) -> Unit, chain: List<Route>, i: Int) {
         release()
-        onDevice = preferOnDevice && onDeviceAvailable()
-        val r = if (onDevice && Build.VERSION.SDK_INT >= 31) SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
-        else if (SpeechRecognizer.isRecognitionAvailable(context)) SpeechRecognizer.createSpeechRecognizer(context)
-        else { onEvent(HeardEvent.Error("This phone has no speech recognition service. Install or enable Google speech services.", false)); return }
+        val route = chain.getOrNull(i) ?: run {
+            onEvent(HeardEvent.Error("Speech recognition isn't working on this phone. Use voice typing instead, or check Android settings › Voice input.", false, offerVoiceTyping = true)); return
+        }
+        val r = runCatching {
+            when (route) {
+                Route.ON_DEVICE -> if (Build.VERSION.SDK_INT >= 31) SpeechRecognizer.createOnDeviceSpeechRecognizer(context) else null
+                Route.DEFAULT -> SpeechRecognizer.createSpeechRecognizer(context)
+                Route.GOOGLE -> SpeechRecognizer.createSpeechRecognizer(context, googleService)
+            }
+        }.getOrNull() ?: return start(language, onEvent, chain, i + 1)
         recognizer = r
-        lastWasOnDevice = onDevice
-        val usedOnDevice = onDevice
+        lastWasOnDevice = route == Route.ON_DEVICE
+        var heardSomething = false
         r.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) = onEvent(HeardEvent.Ready)
-            override fun onBeginningOfSpeech() {}
+            override fun onBeginningOfSpeech() { heardSomething = true }
             override fun onRmsChanged(rmsdB: Float) = onEvent(HeardEvent.Level(((rmsdB + 2f) / 12f).coerceIn(0f, 1f)))
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {}
@@ -133,23 +157,36 @@ class SpeechInput @Inject constructor(@ApplicationContext private val context: C
             override fun onResults(b: Bundle?) { onEvent(HeardEvent.Final(best(b).orEmpty())) }
             override fun onEvent(eventType: Int, params: Bundle?) {}
             override fun onError(error: Int) {
-                // On-device model missing for this language: fall back to the system recognizer (still offline-preferred).
-                if (usedOnDevice && error in setOf(12, 13, SpeechRecognizer.ERROR_CLIENT, SpeechRecognizer.ERROR_SERVER)) {
-                    main.post { start(language, onEvent, preferOnDevice = false) }; return
+                val noSpeech = error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                val permission = error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS
+                if (noSpeech || permission || (heardSomething && error == SpeechRecognizer.ERROR_NETWORK)) {
+                    onEvent(HeardEvent.Error(describe(error), noSpeech)); return
                 }
-                onEvent(HeardEvent.Error(describe(error), error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT))
+                // Service-level failure (client/server/disconnected/busy/language/network): this route doesn't work here.
+                if (error != SpeechRecognizer.ERROR_RECOGNIZER_BUSY) markBroken(route)
+                main.post { start(language, onEvent, chain, i + 1) }
             }
         })
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, route != Route.GOOGLE)   // Google route may use its online model if no pack
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
             if (language.isNotBlank()) putExtra(RecognizerIntent.EXTRA_LANGUAGE, language)
         }
-        runCatching { r.startListening(intent) }.onFailure { onEvent(HeardEvent.Error("Could not start the microphone.", false)) }
+        runCatching { r.startListening(intent) }.onFailure { markBroken(route); main.post { start(language, onEvent, chain, i + 1) } }
     }
+
+    /** Android's own voice-typing screen: the last resort that works on almost every phone. */
+    fun voiceTypingIntent(language: String = ""): Intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+        putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak now")
+        if (language.isNotBlank()) putExtra(RecognizerIntent.EXTRA_LANGUAGE, language)
+    }
+
+    /** Forget remembered failures (e.g. after the user installs a speech pack). */
+    fun resetRoutes() = prefs.edit().clear().apply()
 
     /** Stop listening and deliver what was heard so far. */
     fun stop() = main.post { recognizer?.stopListening() }
@@ -162,11 +199,7 @@ class SpeechInput @Inject constructor(@ApplicationContext private val context: C
     private fun describe(e: Int) = when (e) {
         SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "I didn't catch that."
         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission is needed."
-        SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
-            "Speech recognition needs its offline language pack. Download it in Android settings › Speech recognition (or connect once)."
-        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "The speech recognizer is busy. Try again."
-        SpeechRecognizer.ERROR_AUDIO -> "The microphone could not be opened."
-        12, 13 -> "This language isn't available for offline speech recognition on this phone."
+        SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Speech recognition lost its connection. Try again."
         else -> "Speech recognition failed (code $e)."
     }
 }

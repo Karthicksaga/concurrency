@@ -171,7 +171,8 @@ class KnowledgeService @Inject constructor(
         for (f in files) {
             val name = f.name ?: continue
             val kind = kindFor(name, f.type)
-            if (kind == null || f.length() > (if (kind == DocKind.PDF) 60L shl 20 else 20L shl 20)) { skipped++; continue }
+            // Photos in a linked folder are usually pictures, not documents: only files you add yourself are read with OCR.
+            if (kind == null || kind == DocKind.IMAGE || f.length() > (if (kind == DocKind.PDF) 60L shl 20 else 20L shl 20)) { skipped++; continue }
             val key = f.uri.toString(); seen += key
             val old = existing[key]
             if (old != null && old.sourceModified == f.lastModified()) continue
@@ -194,6 +195,8 @@ class KnowledgeService @Inject constructor(
         worker = scope.launch {
             _working.value = true
             try {
+                // Photos queued from a linked folder by 0.1.9 are dropped (folder sync no longer imports photos).
+                dao.pending().filter { it.kind == DocKind.IMAGE.name && it.sourceUri != null }.forEach { deleteDoc(it.id) }
                 while (true) {
                     val next = dao.pending().firstOrNull() ?: break
                     process(next)

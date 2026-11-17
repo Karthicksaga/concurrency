@@ -81,6 +81,17 @@ fun AppRoot(openChat: kotlinx.coroutines.flow.MutableStateFlow<String?>, openRou
     var splash by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(true) }
     Box(Modifier.fillMaxSize()) {
         settings?.let { AppContent(openChat, openRoute, it) }
+        // Last run ended in a crash: offer the local report (shared only if the user chooses).
+        val ctx = LocalContext.current
+        var crash by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+        LaunchedEffect(Unit) { crash = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.localai.app.CrashReport.pending(ctx) } }
+        if (!splash) crash?.let { report ->
+            androidx.compose.material3.AlertDialog(onDismissRequest = { com.localai.app.CrashReport.dismiss(ctx); crash = null },
+                title = { Text("LOCAL AI closed unexpectedly") },
+                text = { Text("Sorry about that. A short technical report was saved on this phone. Share it with the developer to help fix it; nothing is sent unless you choose to.") },
+                confirmButton = { androidx.compose.material3.TextButton(onClick = { ctx.startActivity(com.localai.app.CrashReport.shareIntent(report)); com.localai.app.CrashReport.dismiss(ctx); crash = null }) { Text("Share report") } },
+                dismissButton = { androidx.compose.material3.TextButton(onClick = { com.localai.app.CrashReport.dismiss(ctx); crash = null }) { Text("Dismiss") } })
+        }
         androidx.compose.animation.AnimatedVisibility(splash, enter = androidx.compose.animation.EnterTransition.None,
             exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(420)) +
                 androidx.compose.animation.scaleOut(androidx.compose.animation.core.tween(420), targetScale = 1.04f)) {
@@ -113,7 +124,7 @@ private fun AppContent(openChat: kotlinx.coroutines.flow.MutableStateFlow<String
                 if (showBar) NavigationBar(containerColor = La.colors.surface1) {
                     TABS.forEach { t ->
                         NavigationBarItem(
-                            selected = route == t.route, onClick = { nav.goTab(t.route) },
+                            selected = route == t.route, onClick = { if (t.route == "chats") nav.navigate("newchat") else nav.goTab(t.route) },
                             icon = { Icon(t.icon, contentDescription = null) }, label = { Text(t.label) },
                             colors = NavigationBarItemDefaults.colors(indicatorColor = La.colors.accentSoft, selectedIconColor = La.colors.accentStrong,
                                 selectedTextColor = La.colors.text, unselectedIconColor = La.colors.text3, unselectedTextColor = La.colors.text3),
@@ -123,7 +134,11 @@ private fun AppContent(openChat: kotlinx.coroutines.flow.MutableStateFlow<String
             },
         ) { pad ->
             Box(Modifier.fillMaxSize().padding(bottom = if (showBar) pad.calculateBottomPadding() else androidx.compose.ui.unit.Dp(0f))) {
-                NavHost(nav, startDestination = if (s.onboarded) "home" else "onboarding") {
+                // Opens straight into a fresh chat, like a messaging app; Home and the other tabs are in the drawer and tab bar.
+                NavHost(nav, startDestination = if (s.onboarded) "newchat?attach={attach}" else "onboarding") {
+                    composable("newchat?attach={attach}", arguments = listOf(navArgument("attach") { defaultValue = "0" })) { e ->
+                        com.localai.app.feature.chat.NewChatEntry(nav, attach = e.arguments?.getString("attach") == "1")
+                    }
                     composable("onboarding") { OnboardingScreen(onDone = { nav.navigate("home") { popUpTo("onboarding") { inclusive = true } } }) }
                     composable("home") { HomeScreen(nav) }
                     composable("chats") { ChatListScreen(nav) }

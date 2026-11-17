@@ -115,7 +115,7 @@ await step('Chat: streaming answer with citations, stop and regenerate', async (
   await page.fill('#composer-input', 'What is the notice period in my lease?');
   await page.click('[data-action=send]');
   await page.waitForSelector('[data-action=stop]', { timeout: 2000 });
-  await page.waitForSelector('[data-action=send]', { timeout: 15000 });
+  await page.waitForSelector('[data-action=stop]', { state: 'detached', timeout: 15000 });
   const last = await page.locator('.msg.ai').last().innerText();
   assert(/60 days/.test(last), 'answer mentions notice');
   assert(await page.locator('.msg.ai').last().locator('.source').count() >= 2, 'sources rendered');
@@ -133,11 +133,13 @@ await step('Chat: knowledge base picker and agent mode toggle', async () => {
   await page.click('[data-action=new-chat]').catch(() => {});
   await go('chat');
   await page.click('[data-action=new]');
-  await page.click('[data-action=pick-kb]');
+  await page.click('[data-action=attach]');
+  await page.click('.sheet [data-action=pick-kb]');
   await page.locator('.sheet input[value=kb-research]').check();
   await page.click('.sheet [data-action=close-sheet].btn');
   assert((await text('[data-action=pick-kb]')).includes('On-device ML papers'), 'kb chip shows selection');
-  await page.click('[data-action=pick-agent]');
+  await page.click('[data-action=attach]');
+  await page.click('.sheet [data-action=pick-agent]');
   await page.click('.sheet [data-v=supervisor]');
   assert((await text('[data-action=pick-agent]')).includes('Supervisor'), 'agent mode on');
 });
@@ -268,7 +270,7 @@ await step('Photo: text-only model refuses, switch to SmolVLM, photo is explaine
   await page.click('[data-action=send]');
   assert((await page.locator('.msg.ai').last().innerText()).includes("can't see images"), 'no-vision message');
   await page.click('[data-action=use-vision]');
-  await page.waitForSelector('[data-action=send]', { timeout: 15000 });
+  await page.waitForSelector('[data-action=stop]', { state: 'detached', timeout: 15000 });
   await page.waitForFunction(() => /28 Nov 2026/.test(document.querySelectorAll('.msg.ai')[document.querySelectorAll('.msg.ai').length - 1].innerText), null, { timeout: 15000 });
   assert(await page.locator('.msg.user img.photo').count() === 1, 'photo in user bubble');
   await page.waitForFunction(() => LA.S.modelLoaded, null, { timeout: 5000 });
@@ -396,6 +398,27 @@ await step('Read it to me: photo → text → simple explanation in Hindi', asyn
   await page.click('[data-action=rd-photo]');
   await page.click('.sheet [data-action=photo-sample][data-k=plant]');
   assert((await page.locator('.view').innerText()).includes('No readable text'), 'photo without text handled');
+});
+
+await step('Chat: drawer with sections, pinned chats, search; pill composer switches voice ↔ send', async () => {
+  await go('chat-c-lease');
+  assert(await page.locator('.pill .voicebtn').isVisible(), 'voice button when empty');
+  await page.fill('#composer-input', 'hello');
+  assert(await page.locator('.pill .send').isVisible() && !(await page.locator('.pill .voicebtn').isVisible()), 'send replaces voice when typing');
+  await page.fill('#composer-input', '');
+  await page.click('[data-action=drawer]');
+  assert(await page.locator('.drawer').count() === 1, 'drawer open');
+  assert((await page.locator('.drawer').innerText()).includes('Scam check'), 'sections listed');
+  await page.locator('.d-chat[data-id=c-flow] i').click();
+  await page.click('.sheet [data-action=d-pin]');
+  assert((await page.locator('.drawer').innerText()).includes('Pinned'), 'pinned section');
+  await page.waitForTimeout(400); await shot('32-chat-drawer');
+  await page.click('[data-d=search]'); await page.fill('#d-q', 'coorg');
+  assert(await page.locator('.d-chat').count() === 1, 'search filters chats');
+  await page.click('[data-d=close]', { position: { x: 395, y: 400 } });   // the visible strip of the scrim beside the drawer
+  await page.click('[data-action=new-here]'); await page.waitForTimeout(250);
+  assert((await page.locator('.chat-empty h2').innerText()).includes('What can I help with?'), 'empty state');
+  await shot('33-chat-empty');
 });
 
 await step('Launch animation plays and gets out of the way', async () => {

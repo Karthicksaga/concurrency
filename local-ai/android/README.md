@@ -22,7 +22,7 @@ The APK is signed with a **public test key** committed in `app/debug-release.key
 | Resumable downloads (pause / resume / cancel), SHA-256 verification, Wi-Fi-only option, progress notification | ✅ |
 | Import your own `.gguf` (header validated, metadata read for the memory estimate) | ✅ |
 | Per-model context length, temperature, top-p | ✅ |
-| Chat: streaming, stop, regenerate, copy, history, system prompt, markdown + code blocks, tok/s | ✅ |
+| Chat: opens straight into a new chat; side drawer (search, sections, pinned and recent chats, rename/delete); pill composer with + (camera, photos, knowledge, agent mode, tools), mic and voice-mode button; streaming, stop, regenerate, copy, markdown + code blocks, tok/s | ✅ |
 | KV-cache reuse between turns, automatic trimming of old turns when the context is full | ✅ |
 | Hidden reasoning for "thinking" models (toggle in Settings) | ✅ |
 | Performance screen: tok/s, free RAM, app memory, thermal status, battery, CPU features | ✅ |
@@ -37,11 +37,12 @@ The APK is signed with a **public test key** committed in `app/debug-release.key
 | **Daily digest:** at your chosen time, an on-device summary of new documents, notes and workflows → notification + saved chat + Email button (opens your email app pre-filled) | ✅ |
 | **Automatic digest email (opt-in):** sends through your own mail server (Gmail/Outlook/Yahoo/Zoho/custom) with an app password stored in the Android Keystore; test email; falls back to the Email button | ✅ |
 | **Photos:** take a photo or pick one in chat ("Ask a photo" on Home) and ask about it; vision models SmolVLM 500M (4–6 GB phones), SmolVLM2 2.2B, Qwen2.5-VL 3B, Gemma 3 4B; image encoder downloaded and verified with the model | ✅ |
-| **Voice:** dictate in chat, read any answer aloud, hands-free voice conversation (listen → answer → speak while writing → listen; tap to interrupt); voice language and speed; on-device speech recognizer when the phone has one | ✅ |
+| **Voice:** recognizer fallback chain (on-device → system → Google service → Android voice-typing screen; failures remembered), dictate in chat, read any answer aloud, hands-free voice conversation (listen → answer → speak while writing → listen; tap to interrupt); voice language and speed; on-device speech recognizer when the phone has one | ✅ |
 | **Document Studio:** write reports, letters, emails, minutes, resumes, essays and proposals with AI → PDF or Word; convert Word → PDF, PDF → Word, Markdown/text → either, optionally fixing, summarizing, translating, formalizing or simplifying with AI; save any chat answer as PDF/Word; open, share or save to phone | ✅ |
-| **Text recognition (OCR):** offline Tesseract; English built in, Hindi/Tamil/Telugu/Kannada/Malayalam/Bengali/Marathi downloadable (Settings › Text recognition); used for chat photos (text-only models can answer about documents), scanned PDFs and photos in Knowledge, scan-to-Word/PDF in Documents | ✅ |
+| **Text recognition (OCR):** offline Tesseract in an isolated `:ocr` process (a crash on a strange image fails only that file); English built in, Hindi/Tamil/Telugu/Kannada/Malayalam/Bengali/Marathi downloadable (Settings › Text recognition); used for chat photos (text-only models can answer about documents), scanned PDFs and photos in Knowledge, scan-to-Word/PDF in Documents | ✅ |
 | **Scam check:** paste, screenshot or **Share → Check with LOCAL AI** from any app; on-device rules for Indian frauds (OTP/PIN, KYC, electricity, digital arrest, task jobs, fake links…) + explanation in your language, read aloud; 1930 / Chakshu advice | ✅ |
 | **Read it to me:** photo of a letter, bill, form or medicine label → large text, read aloud as written, or explained simply in your language | ✅ |
+| Crash report: after an unexpected close the app offers a local report you can share (nothing is uploaded) | ✅ |
 | Images inside Word files, whisper.cpp speech, isolated parser process, GPU/NPU, Gmail sign-in (OAuth) | ⏳ Later |
 
 ## Lite mode

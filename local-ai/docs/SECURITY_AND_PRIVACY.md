@@ -20,7 +20,7 @@ Status: Draft for approval · Phase 3 output
 | Same | Cloud backup leakage | `android:allowBackup="false"`, data extraction rules exclude everything; user-initiated encrypted export only (V1.x) |
 | Same | Accidental network exfiltration | Network code confined to `:data:downloads`; host allowlist; no network-capable tools; lint + dependency guard; network log |
 | Device integrity | Malicious model file | GGUF validated before load; catalog checksums; imported models flagged "unverified"; llama.cpp parsing hardened by pinning releases with security fixes; fuzz our GGUF metadata reader |
-| Device integrity | Malicious documents (parser exploits, zip bombs) | Parsing in `isolatedProcess` service, size/ratio/time limits, fd-only access |
+| Device integrity | Malicious documents (parser exploits, zip bombs) | Text recognition (Tesseract/Leptonica, native) runs in a separate `:ocr` process with a 6 MP image cap and timeouts (implemented); PDF/DOCX parsing in an `isolatedProcess` service is planned; size/ratio/time limits |
 | User intent | Prompt injection via documents or memory | Sources marked as untrusted data in prompts; side-effecting tools always "Ask"; tools cannot reach network; agents cannot change permissions; injected text cannot enable tools |
 | User intent | Agent misuse of tools | Typed tools, schema validation, permission gate, budgets, audit log |
 | App | Model-generated code execution | **Not supported.** No interpreter, no `eval`, no shell, no dynamic code loading |

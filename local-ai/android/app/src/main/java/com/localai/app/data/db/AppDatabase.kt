@@ -50,6 +50,7 @@ data class ConversationEntity(
     val updatedAt: Long,
     val agentId: String? = null,                       // agent id, "supervisor" for workflows, or null
     @ColumnInfo(defaultValue = "") val kbIds: String = "",  // comma-separated knowledge base ids
+    @ColumnInfo(defaultValue = "0") val pinned: Boolean = false,
 )
 
 @Entity(tableName = "message")
@@ -79,15 +80,17 @@ interface ModelDao {
     @Query("DELETE FROM installed_model WHERE id = :id") suspend fun delete(id: String)
 }
 
-data class ConversationSummary(val id: String, val title: String, val modelId: String?, val updatedAt: Long, val lastMessage: String?)
+data class ConversationSummary(val id: String, val title: String, val modelId: String?, val updatedAt: Long, val lastMessage: String?, val pinned: Boolean = false)
 
 @Dao
 interface ChatDao {
-    @Query("""SELECT c.id, c.title, c.modelId, c.updatedAt,
+    @Query("""SELECT c.id, c.title, c.modelId, c.updatedAt, c.pinned,
               (SELECT content FROM message m WHERE m.conversationId = c.id ORDER BY createdAt DESC LIMIT 1) AS lastMessage
               FROM conversation c ORDER BY c.updatedAt DESC""")
     fun observeSummaries(): Flow<List<ConversationSummary>>
     @Query("SELECT * FROM conversation WHERE id = :id") fun observeConversation(id: String): Flow<ConversationEntity?>
+    @Query("UPDATE conversation SET pinned = :pinned WHERE id = :id") suspend fun setPinned(id: String, pinned: Boolean)
+    @Query("UPDATE conversation SET title = :title WHERE id = :id") suspend fun rename(id: String, title: String)
     @Query("SELECT * FROM conversation WHERE id = :id") suspend fun conversation(id: String): ConversationEntity?
     @Query("SELECT * FROM message WHERE conversationId = :id ORDER BY createdAt ASC") fun observeMessages(id: String): Flow<List<MessageEntity>>
     @Query("SELECT * FROM message WHERE conversationId = :id ORDER BY createdAt ASC") suspend fun messages(id: String): List<MessageEntity>
@@ -361,9 +364,9 @@ interface RunDao {
     entities = [InstalledModelEntity::class, ConversationEntity::class, MessageEntity::class,
         AgentEntity::class, KnowledgeBaseEntity::class, DocumentEntity::class, ChunkEntity::class, ChunkFts::class,
         MemoryEntity::class, NoteEntity::class, ToolCallEntity::class, RunEntity::class, RunStepEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5)],
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun models(): ModelDao

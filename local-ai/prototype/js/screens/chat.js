@@ -127,17 +127,24 @@ window.LA = window.LA || {};
       const st = LA.modelState(); const busy = !!(stream && stream.convId === c.id);
       const u = ctxUse(c);
       const sub = `${esc(m.name)} · ${st === 'loaded' ? 'ready' : st === 'loading' ? 'loading…' : 'not loaded'}`;
-      const msgs = c.messages.length ? c.messages.map((x, i) => msgHtml(c, x, i, i === c.messages.length - 1)).join('') : `<div class="empty" style="padding-top:40px">${ag ? C.avatar(ag, 'lg') : `<span class="avatar lg" style="background:var(--accent-soft);color:var(--accent-strong)">${I('sparkle')}</span>`}<b style="font:600 18px var(--font-display);color:var(--text)">${ag ? 'Chat with ' + esc(ag.name) : c.agentMode ? 'Supervisor workflow' : 'Ask anything, offline'}</b><span class="small">${ag ? esc(ag.desc) : c.agentMode ? 'Your request is split into tasks for specialised agents that share one model.' : 'Responses in this prototype are simulated. No model is running.'}</span><div class="chips" style="justify-content:center;margin-top:6px">${(c.agentMode ? ['Compare llama.cpp and ExecuTorch and draft a Kotlin interface'] : c.kbs.includes('kb-finance') ? ['When do I get my deposit back?', 'What is the notice period?'] : ['Explain Kotlin Flow sample()', 'What is 38000 * 2 * 0.9?', 'Summarise my ML papers']).map((s) => `<button class="chip" data-action="suggest" data-t="${esc(s)}">${esc(s)}</button>`).join('')}</div></div>`;
-      const kbChip = `<button class="chip sm ${c.kbs.length ? 'on' : ''}" data-action="pick-kb">${I('knowledge', 'icon-sm')}${c.kbs.length ? c.kbs.length === 1 ? esc(LA.kb(c.kbs[0]).name) : c.kbs.length + ' knowledge bases' : 'Knowledge'}</button>`;
-      const agentChip = `<button class="chip sm ${c.agentMode || ag ? 'on' : ''}" data-action="pick-agent">${I('agents', 'icon-sm')}${c.agentMode ? 'Agent mode: Supervisor' : ag ? esc(ag.name) : 'Agent mode off'}</button>`;
+      const empty = `<div class="chat-empty">${ag ? C.avatar(ag, 'lg') : ''}<h2>${c.agentMode ? 'What should your agents work on?' : ag ? 'Ask ' + esc(ag.name) : 'What can I help with?'}</h2><span class="small faint">${c.kbs.length ? 'Answers will cite your documents.' : 'Private and offline · stays on this phone'}</span>
+        <div class="starters">${[['camera', 'Explain a photo', 'attach'], ['shield', 'Is this message a scam?', 'go-scam'], ['doc', 'Write a letter or report', 'go-studio'], ['volume', 'Read a document to me', 'go-read']].map(([ic, t, a]) => `<button data-action="${a}">${I(ic)}<span>${t}</span></button>`).join('')}</div>
+        <div class="chips" style="justify-content:center">${(c.agentMode ? ['Compare llama.cpp and ExecuTorch and draft a Kotlin interface'] : c.kbs.includes('kb-finance') ? ['When do I get my deposit back?', 'What is the notice period?'] : ['Explain Kotlin Flow sample()', 'What is 38000 * 2 * 0.9?']).map((t) => `<button class="chip sm" data-action="suggest" data-t="${esc(t)}">${esc(t)}</button>`).join('')}</div></div>`;
+      const msgs = c.messages.length ? c.messages.map((x, i) => msgHtml(c, x, i, i === c.messages.length - 1)).join('') : empty;
+      const kbChip = c.kbs.length ? `<button class="chip sm on" data-action="pick-kb">${I('knowledge', 'icon-sm')}${c.kbs.length === 1 ? esc(LA.kb(c.kbs[0]).name) : c.kbs.length + ' knowledge bases'}</button>` : '';
+      const agentChip = c.agentMode || ag ? `<button class="chip sm on" data-action="pick-agent">${I('agents', 'icon-sm')}${c.agentMode ? 'Agent mode: Supervisor' : esc(ag.name)}</button>` : '';
       const att = (c.attachments || []).map((d) => `<span class="chip sm on">${I('file', 'icon-sm')}${esc(LA.doc(d) ? LA.doc(d).title : d)}</span>`).join('');
-      return `${C.topbar({ title: esc(c.title), sub, back: 'chat', bordered: true, actions: C.go('wave', 'voice-' + c.id, 'Voice conversation') + C.ib('models', 'chat-model', 'Choose model') + C.ib('more', 'chat-more', 'Conversation options') })}
-        <div class="scroll"><div class="chat-scroll">${st !== 'loaded' ? `<div class="banner ${st === 'loading' ? 'info' : 'warn'}">${I(st === 'loading' ? 'info' : 'alert')}<span>${st === 'loading' ? 'Loading model into memory…' : 'No model is loaded. Sending will load ' + esc(m.name) + ' first.'}</span></div>` : ''}${msgs}</div></div>
-        <div class="composer"><div class="chips scroller">${kbChip}${agentChip}${att}</div>
-          ${c.pendingPhoto ? `<div class="pending-photo"><img src="${LA.photoSrc(c.pendingPhoto)}" alt="Photo to send"><div class="grow"><b class="small">Photo attached</b><div class="xs faint">Ask about it, or just send.${LA.isVision(c.model || LA.S.activeModel) ? '' : ' Needs a vision model.'}</div></div>${C.ib('close', 'photo-remove', 'Remove photo')}</div>` : ''}
-          <div class="boxrow"><button class="ibtn" data-action="attach" aria-label="Add a photo or document">${I('camera')}</button><textarea id="composer-input" rows="1" placeholder="${dictating ? 'Listening…' : c.agentMode ? 'Describe a task for the agents…' : c.pendingPhoto ? 'Ask about the photo' : 'Message'}" aria-label="Message" data-input="grow"></textarea>
+      const ctx = kbChip + agentChip + att;
+      const sendVisible = !!c.pendingPhoto;
+      return `<header class="gpt-top"><button class="ibtn round" data-action="drawer" aria-label="Chats and menu">${I('menu')}</button>
+          <button class="model-pill" data-action="chat-model"><b>${ag ? esc(ag.name) : esc(m.name.replace(' Instruct', ''))}</b><small>${st === 'loaded' ? 'ready' : st === 'loading' ? 'loading…' : 'not loaded'}</small>${I('down', 'icon-sm')}</button>
+          <span class="row" style="gap:2px">${C.ib('more', 'chat-more', 'Conversation options')}<button class="ibtn round" data-action="new-here" aria-label="New chat">${I('edit')}</button></span></header>
+        <div class="scroll"><div class="chat-scroll">${st !== 'loaded' && c.messages.length ? `<div class="banner ${st === 'loading' ? 'info' : 'warn'}">${I(st === 'loading' ? 'info' : 'alert')}<span>${st === 'loading' ? 'Loading model into memory…' : 'No model is loaded. Sending will load ' + esc(m.name) + ' first.'}</span></div>` : ''}${msgs}</div></div>
+        <div class="composer gpt">${ctx ? `<div class="chips scroller">${ctx}</div>` : ''}
+          ${c.pendingPhoto ? `<div class="pending-photo"><img src="${LA.photoSrc(c.pendingPhoto)}" alt="Photo to send"><div class="grow"><b class="small">Photo attached</b><div class="xs faint">Ask about it, or just send. Text in the photo is read on the phone.</div></div>${C.ib('close', 'photo-remove', 'Remove photo')}</div>` : ''}
+          <div class="pill ${sendVisible ? 'has-text' : ''}"><button class="ibtn" data-action="attach" aria-label="Add photo, files and more">${I('plus')}</button><textarea id="composer-input" rows="1" placeholder="${dictating ? 'Listening…' : c.agentMode ? 'Describe a task for the agents…' : c.pendingPhoto ? 'Ask about the photo' : 'Ask LOCAL AI'}" aria-label="Message" data-input="grow"></textarea>
           ${busy ? '' : `<button class="ibtn mic ${dictating ? 'on' : ''}" data-action="dictate" aria-label="${dictating ? 'Stop dictation' : 'Dictate'}">${I('mic')}</button>`}
-          ${busy ? `<button class="sendbtn stop" data-action="stop" aria-label="Stop generating">${I('stop')}</button>` : `<button class="sendbtn" data-action="send" aria-label="Send">${I('send')}</button>`}</div>
+          ${busy ? `<button class="sendbtn stop" data-action="stop" aria-label="Stop generating">${I('stop')}</button>` : `<button class="sendbtn send" data-action="send" aria-label="Send">${I('send')}</button><button class="sendbtn voicebtn" data-go="voice-${c.id}" aria-label="Voice mode">${I('wave')}</button>`}</div>
           <div class="ctxbar"><span>Context</span>${C.progress(u.used / u.max, u.used / u.max > 0.8 ? 'warn' : 'thin')}<span>${F.num(u.used)} / ${F.ctx(u.max)}</span></div></div>`;
     },
     mount(root, id, same) {
@@ -153,7 +160,7 @@ window.LA = window.LA || {};
       if (c && c.messages.some((m) => m.workflow) && LA.wf.dirty) { LA.wf.dirty = false; need = true; }
       if (need && !stream) LA.refresh();
     },
-    inputs: { grow: (el) => { el.style.height = 'auto'; el.style.height = Math.min(120, el.scrollHeight) + 'px'; } },
+    inputs: { grow: (el) => { el.style.height = 'auto'; el.style.height = Math.min(120, el.scrollHeight) + 'px'; const p = el.closest('.pill'); if (p) p.classList.toggle('has-text', !!el.value.trim() || !!document.querySelector('.pending-photo')); } },
     actions: {
       send: (el, ev, id) => {
         const c = LA.conv(id); const ta = document.getElementById('composer-input'); const text = ta.value.trim();
@@ -214,8 +221,13 @@ window.LA = window.LA || {};
       },
       attach: (el, ev, id) => {
         const c = LA.conv(id);
-        LA.photoSheet((p) => { c.pendingPhoto = p; LA.save(); LA.refresh(); }, () => LA.screens.chat.actions['attach-doc'](el, ev, id));
+        const row = (ic, t, s2, a) => `<button class="li" data-action="${a}">${I(ic)}<div class="grow"><div class="t">${t}</div><div class="s">${s2}</div></div></button>`;
+        const extra = `<div class="eyebrow" style="margin-top:6px">For this chat</div><div class="list">${row('agents', 'Agent mode', c.agentMode ? 'Supervisor' : c.agent ? esc(LA.agent(c.agent).name) : 'Off · plain chat with the model', 'pick-agent')}${row('knowledge', 'Knowledge bases', c.kbs.length ? 'On · answers cite your documents' : 'Answer from your documents', 'pick-kb')}${row('shield', 'Scam check', 'Is a message or screenshot a fraud?', 'go-scam')}${row('volume', 'Read it to me', 'Photo of a letter, bill or label, read aloud', 'go-read')}${row('doc', 'Documents', 'Write or convert PDF and Word', 'go-studio')}</div>`;
+        LA.photoSheet((p) => { c.pendingPhoto = p; LA.save(); LA.refresh(); }, () => LA.screens.chat.actions['attach-doc'](el, ev, id), extra);
       },
+      drawer: (el, ev, id) => LA.chatDrawer(id),
+      'new-here': () => LA.newChat({}),
+      'go-scam': () => { LA.closeSheet(); LA.go('scam'); }, 'go-studio': () => { LA.closeSheet(); LA.go('studio'); }, 'go-read': () => { LA.closeSheet(); LA.go('read'); },
       'photo-remove': (el, ev, id) => { const c = LA.conv(id); c.pendingPhoto = null; LA.save(); LA.refresh(); },
       'use-vision': (el, ev, id) => {
         const c = LA.conv(id); const vm = LA.model('smolvlm-500m');
@@ -251,6 +263,46 @@ window.LA = window.LA || {};
         });
       }
     }
+  };
+
+  /* ---------- side drawer: search, sections, pinned and recent chats ---------- */
+  LA.chatDrawer = function (currentId, instant) {
+    document.querySelectorAll('.drawer-layer').forEach((n) => n.remove());
+    const dev = document.querySelector('.device'); const w = document.createElement('div'); w.className = 'drawer-layer' + (instant ? ' instant' : '');
+    let query = ''; let searching = false;
+    const close = () => w.remove();
+    const paint = () => {
+      const all = LA.S.conversations.slice().sort((a, b) => b.updated - a.updated).filter((c) => c.messages.length || c.id === currentId)
+        .filter((c) => !query || c.title.toLowerCase().includes(query.toLowerCase()));
+      const row = (c) => `<button class="d-chat ${c.id === currentId ? 'on' : ''}" data-d="open" data-id="${c.id}">${I('chat', 'icon-sm')}<span class="ellipsis">${esc(c.title)}</span><i data-d="menu" data-id="${c.id}" aria-label="Chat options">${I('more', 'icon-sm')}</i></button>`;
+      const secs = [['home', 'Home', 'home'], ['camera', 'Ask a photo', 'photo'], ['shield', 'Scam check', 'scam'], ['volume', 'Read it to me', 'read'], ['doc', 'Documents', 'studio'], ['agents', 'Agents', 'agents'], ['knowledge', 'Knowledge', 'knowledge'], ['models', 'Models', 'models']];
+      const pinned = all.filter((c) => c.pinned);
+      w.querySelector('.drawer-body').innerHTML = `<div class="d-head">${searching ? `<input class="input" id="d-q" placeholder="Search chats" value="${esc(query)}">` : '<h2>LOCAL AI</h2>'}<button class="ibtn round" data-d="search" aria-label="${searching ? 'Close search' : 'Search chats'}">${I(searching ? 'close' : 'search')}</button></div>
+        ${searching ? '' : secs.map(([ic, t, r]) => `<button class="d-item" data-d="go" data-r="${r}">${I(ic)}<span>${t}</span></button>`).join('')}
+        ${pinned.length ? `<h3>Pinned</h3>${pinned.map(row).join('')}` : ''}<h3>${query ? 'Results' : 'Chats'}</h3>${all.filter((c) => !c.pinned).map(row).join('') || '<p class="small faint" style="margin:8px">No chats yet.</p>'}`;
+      const qi = w.querySelector('#d-q'); if (qi) { qi.focus(); qi.setSelectionRange(query.length, query.length); qi.addEventListener('input', () => { query = qi.value; paint(); }); }
+    };
+    w.innerHTML = `<div class="scrim" data-d="close"></div><aside class="drawer" role="dialog" aria-label="Chats and menu"><div class="drawer-body"></div><div class="d-foot"><button class="btn btn-primary" data-d="new">${I('edit', 'icon-sm')}New chat</button><button class="ibtn round" data-d="settings" aria-label="Settings">${I('settings')}</button></div></aside>`;
+    w.addEventListener('click', (e) => {
+      const t = e.target.closest('[data-d]'); if (!t) return; e.preventDefault(); e.stopPropagation();
+      const d = t.getAttribute('data-d'); const id = t.getAttribute('data-id');
+      if (d === 'close') close();
+      else if (d === 'search') { searching = !searching; query = ''; paint(); }
+      else if (d === 'go') { close(); const r = t.getAttribute('data-r'); if (r === 'photo') LA.screens.home.actions['ask-photo'](); else LA.go(r); }
+      else if (d === 'open') { close(); LA.go('chat-' + id); }
+      else if (d === 'new') { close(); LA.newChat({}); }
+      else if (d === 'settings') { close(); LA.go('prefs'); }
+      else if (d === 'menu') {
+        const c = LA.conv(id); close();
+        LA.sheet({ title: esc(c.title), body: `<div class="list"><button class="li" data-action="d-pin">${I('pin')}<div class="grow t">${c.pinned ? 'Unpin' : 'Pin'}</div></button><button class="li" data-action="d-ren">${I('edit')}<div class="grow t">Rename</div></button><button class="li" data-action="d-del" style="color:var(--bad)">${I('trash')}<div class="grow t">Delete</div></button></div>`,
+          handlers: {
+            'd-pin': () => { c.pinned = !c.pinned; LA.save(); LA.closeSheet(); LA.chatDrawer(currentId, true); },
+            'd-ren': () => LA.sheet({ title: 'Rename chat', body: `<input class="input" id="d-ren-in" value="${esc(c.title)}">`, actions: '<button class="btn btn-primary" data-action="d-ren-ok">Save</button>', handlers: { 'd-ren-ok': () => { c.title = document.getElementById('d-ren-in').value.trim() || c.title; LA.save(); LA.closeSheet(); LA.refresh(); LA.chatDrawer(currentId, true); } } }),
+            'd-del': () => { LA.S.conversations = LA.S.conversations.filter((x) => x.id !== id); LA.save(); LA.closeSheet(); if (id === currentId) LA.newChat({}); else LA.chatDrawer(currentId, true); }
+          } });
+      }
+    });
+    dev.appendChild(w); paint();
   };
 
   let q = '';

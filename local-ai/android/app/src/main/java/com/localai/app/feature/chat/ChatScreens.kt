@@ -22,6 +22,20 @@ import com.localai.app.data.db.AgentEntity
 import com.localai.app.data.db.KnowledgeDao
 import com.localai.app.data.knowledge.SourceRef
 import com.localai.app.data.workflow.WorkflowService
+import androidx.compose.material.icons.outlined.Menu
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.outlined.GppMaybe
+import androidx.compose.material.icons.outlined.RecordVoiceOver
+import androidx.compose.material.icons.outlined.ArrowUpward
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.width
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -189,7 +203,7 @@ fun ConversationRow(c: ConversationSummary, onClick: () -> Unit) {
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     savedState: SavedStateHandle,
-    dao: ChatDao,
+    private val dao: ChatDao,
     private val chat: ChatService,
     private val models: ModelRepository,
     settings: SettingsRepository,
@@ -213,6 +227,14 @@ class ChatViewModel @Inject constructor(
     var exported by mutableStateOf<File?>(null)
     val speakingId = speechOut.speakingId
     val voiceAvailable get() = speechIn.available
+    /** Set when no recognition service works: the screen opens Android's voice-typing screen instead. */
+    var needVoiceTyping by mutableStateOf(false)
+    fun voiceTypingIntent(lang: String) = speechIn.voiceTypingIntent(lang)
+    val summaries = dao.observeSummaries().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    suspend fun newChat(): String = chat.newConversation()
+    fun setPinned(cid: String, pinned: Boolean) = viewModelScope.launch { dao.setPinned(cid, pinned) }
+    fun rename(cid: String, title: String) = viewModelScope.launch { if (title.isNotBlank()) dao.rename(cid, title.trim()) }
+    fun deleteOther(cid: String) = viewModelScope.launch { chat.delete(cid) }
     private var cameraFile: File? = null
     val messages = dao.observeMessages(id).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val conversation = dao.observeConversation(id).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
@@ -255,7 +277,7 @@ class ChatViewModel @Inject constructor(
                 is HeardEvent.Partial -> onText(e.text, false)
                 is HeardEvent.Final -> { onText(e.text, true); dictating = false; dictationLevel = 0f }
                 is HeardEvent.Level -> dictationLevel = e.rms
-                is HeardEvent.Error -> { dictating = false; dictationLevel = 0f; if (!e.noSpeech) notice = e.message }
+                is HeardEvent.Error -> { dictating = false; dictationLevel = 0f; if (e.offerVoiceTyping) needVoiceTyping = true else if (!e.noSpeech) notice = e.message }
                 HeardEvent.Ready -> Unit
             }
         }
@@ -315,7 +337,6 @@ fun ChatScreen(nav: NavController, vm: ChatViewModel = hiltViewModel()) {
     val clipboard = LocalClipboardManager.current
     val ctx = LocalContext.current
     var input by rememberSaveable { mutableStateOf("") }
-    var attachMenu by remember { mutableStateOf(vm.autoAttach) }
     val speakingId by vm.speakingId.collectAsStateWithLifecycle()
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let { vm.attach(it) } }
     var cameraUri by remember { mutableStateOf<Uri?>(null) }
@@ -327,6 +348,18 @@ fun ChatScreen(nav: NavController, vm: ChatViewModel = hiltViewModel()) {
         dictationBase.value = input
         vm.dictate { text, _ -> input = (dictationBase.value.trimEnd() + " " + text).trim() }; Unit
     }
+    val voiceTyping = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
+        res.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let { input = (input.trimEnd() + " " + it).trim() }
+    }
+    LaunchedEffect(vm.needVoiceTyping) {
+        if (vm.needVoiceTyping) { vm.needVoiceTyping = false; runCatching { voiceTyping.launch(vm.voiceTypingIntent(settings?.voiceLanguage ?: "")) }.onFailure { vm.notice = "No voice input app is installed." } }
+    }
+    val drawer = androidx.compose.material3.rememberDrawerState(androidx.compose.material3.DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val summaries by vm.summaries.collectAsStateWithLifecycle()
+    var plusSheet by remember { mutableStateOf(false) }
+    val openChat: (String) -> Unit = { id -> scope.launch { drawer.close() }; if (id != vm.id) nav.navigate("chat/$id") { popUpTo("chat/{id}?attach={attach}") { inclusive = true } } }
+    val newChat: () -> Unit = { scope.launch { drawer.close(); val id = vm.newChat(); nav.navigate("chat/$id") { popUpTo("chat/{id}?attach={attach}") { inclusive = true } } } }
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) startDictation() else vm.notice = "Allow the microphone to dictate messages."
     }
@@ -363,19 +396,32 @@ fun ChatScreen(nav: NavController, vm: ChatViewModel = hiltViewModel()) {
         if (n > 0) listState.animateScrollToItem(n - 1, scrollOffset = Int.MAX_VALUE / 4)
     }
 
-    Column(Modifier.fillMaxSize().statusBarsPadding().imePadding()) {
-        Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") }
-            if (agent != null) AgentAvatar(agent.icon, agent.color, 32.dp)
-            Column(Modifier.weight(1f).padding(start = 6.dp).clickable { showModels = true }) {
-                Text(c?.title ?: "Chat", style = MaterialTheme.typography.titleMedium, maxLines = 1)
-                Text("$modelName · $engLabel", color = La.colors.text3, fontSize = 12.sp, maxLines = 1)
+    LaunchedEffect(Unit) { if (vm.autoAttach) plusSheet = true }
+    androidx.compose.material3.ModalNavigationDrawer(drawerState = drawer, drawerContent = {
+        ChatDrawer(nav, summaries, currentId = vm.id, onOpen = openChat, onNew = newChat,
+            onPin = { id, p -> vm.setPinned(id, p) }, onRename = { id, t -> vm.rename(id, t) },
+            onDelete = { id -> if (id == vm.id) vm.delete { newChat() } else vm.deleteOther(id) },
+            close = { scope.launch { drawer.close() } })
+    }) {
+    Column(Modifier.fillMaxSize().background(La.colors.bg).statusBarsPadding().imePadding()) {
+        // Top bar: menu · model picker · new chat
+        Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { scope.launch { drawer.open() } }, Modifier.size(48.dp).clip(CircleShape).background(La.colors.surface1)) {
+                Icon(Icons.Outlined.Menu, "Chats and menu", tint = La.colors.text)
             }
-            IconButton(onClick = { nav.navigate("voice/${vm.id}") }) { Icon(Icons.Outlined.GraphicEq, "Voice conversation", tint = La.colors.text2) }
-            IconButton(onClick = { showModels = true }) { Icon(Icons.Outlined.Memory, "Choose model", tint = La.colors.text2) }
-            IconButton(onClick = { showOptions = true }) { Icon(Icons.Outlined.Tune, "Conversation options", tint = La.colors.text2) }
+            Spacer(Modifier.weight(1f))
+            Row(Modifier.clip(RoundedCornerShape(20.dp)).clickable { showModels = true }.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (agent != null) { AgentAvatar(agent.icon, agent.color, 22.dp); Spacer(Modifier.width(6.dp)) }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(agent?.name ?: modelName.removeSuffix(" Instruct"), fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 1)
+                    Text(engLabel, color = La.colors.text3, fontSize = 11.sp, maxLines = 1)
+                }
+                Icon(Icons.Outlined.ExpandMore, null, tint = La.colors.text3, modifier = Modifier.size(18.dp))
+            }
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = { showOptions = true }, Modifier.size(44.dp)) { Icon(Icons.Outlined.Tune, "Conversation options", tint = La.colors.text2) }
+            IconButton(onClick = newChat, Modifier.size(48.dp).clip(CircleShape).background(La.colors.surface1)) { Icon(Icons.Outlined.EditNote, "New chat", tint = La.colors.text) }
         }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(La.colors.line))
         if (activeId == null) Box(Modifier.padding(16.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Banner("Download or choose a model before chatting.", Tone.WARN)
@@ -383,21 +429,35 @@ fun ChatScreen(nav: NavController, vm: ChatViewModel = hiltViewModel()) {
             }
         }
         vm.notice?.let { n -> Box(Modifier.padding(horizontal = 16.dp, vertical = 6.dp).clickable { vm.notice = null }) { Banner(n, Tone.RUN) } }
-        LazyColumn(Modifier.weight(1f), state = listState, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-            if (messages.isEmpty() && myLive == null) item {
-                Column(Modifier.fillMaxWidth().padding(top = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    if (agent != null) AgentAvatar(agent.icon, agent.color, 56.dp)
+        if (messages.isEmpty() && myLive == null) {
+            // Empty chat: one question, a few starting points
+            Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                if (agent != null) { AgentAvatar(agent.icon, agent.color, 56.dp); Spacer(Modifier.height(12.dp)) }
+                Text(when { supervisor -> "What should your agents work on?"; agent != null -> "Ask ${agent.name}"; else -> "What can I help with?" },
+                    style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(6.dp))
+                Text(if (selectedKbs.isNotEmpty()) "Answers will cite your documents." else "Private and offline · stays on this phone", color = La.colors.text3, fontSize = 13.sp, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(22.dp))
+                val starters = listOf(
+                    Triple(Icons.Outlined.PhotoCamera, "Explain a photo") { plusSheet = true },
+                    Triple(Icons.Outlined.GppMaybe, "Is this message a scam?") { nav.navigate("scam") },
+                    Triple(Icons.Outlined.Description, "Write a letter or report") { nav.navigate("studio") },
+                    Triple(Icons.Outlined.RecordVoiceOver, "Read a document to me") { nav.navigate("read") },
+                )
+                starters.chunked(2).forEach { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        row.forEach { (icon, label, go) ->
+                            Column(Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).border(1.dp, La.colors.line, RoundedCornerShape(16.dp)).clickable(onClick = go).padding(14.dp)) {
+                                Icon(icon, null, tint = La.colors.accent, modifier = Modifier.size(20.dp))
+                                Spacer(Modifier.height(8.dp))
+                                Text(label, fontSize = 13.5.sp, color = La.colors.text2, maxLines = 2)
+                            }
+                        }
+                    }
                     Spacer(Modifier.height(10.dp))
-                    Text(when { supervisor -> "Supervisor workflow"; agent != null -> "Chat with ${agent.name}"; else -> "Ask anything, offline" }, style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.height(6.dp))
-                    Text(when {
-                        supervisor -> "Your request is split into tasks for your agents, which take turns on one model."
-                        agent != null -> agent.description
-                        selectedKbs.isNotEmpty() -> "Answers will cite your documents."
-                        else -> "This conversation stays on your phone."
-                    }, color = La.colors.text2, fontSize = 13.sp, textAlign = TextAlign.Center)
                 }
             }
+        } else LazyColumn(Modifier.weight(1f), state = listState, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
             items(messages, key = { it.id }) { m ->
                 if (m.role == "user") UserBubble(m.content, m.imagePath)
                 else Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -453,31 +513,29 @@ fun ChatScreen(nav: NavController, vm: ChatViewModel = hiltViewModel()) {
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().background(La.colors.surface1).horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selectedKbs.isNotEmpty(), { showKbs = true }, { Text(if (selectedKbs.isEmpty()) "Knowledge" else if (selectedKbs.size == 1) kbs.firstOrNull { it.id == selectedKbs[0] }?.name ?: "1 knowledge base" else "${selectedKbs.size} knowledge bases", maxLines = 1) },
+        // Active context, only when something is on
+        if (selectedKbs.isNotEmpty() || c?.agentId != null) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (selectedKbs.isNotEmpty()) FilterChip(true, { showKbs = true }, { Text(if (selectedKbs.size == 1) kbs.firstOrNull { it.id == selectedKbs[0] }?.name ?: "1 knowledge base" else "${selectedKbs.size} knowledge bases", maxLines = 1) },
                 leadingIcon = { Icon(Icons.AutoMirrored.Outlined.MenuBook, null, Modifier.size(16.dp)) })
-            FilterChip(c?.agentId != null, { showAgents = true }, { Text(when { supervisor -> "Agent mode: Supervisor"; agent != null -> agent.name; else -> "Agent mode off" }, maxLines = 1) },
+            if (c?.agentId != null) FilterChip(true, { showAgents = true }, { Text(if (supervisor) "Supervisor" else agent?.name ?: "Agent", maxLines = 1) },
                 leadingIcon = { Icon(Icons.Outlined.SmartToy, null, Modifier.size(16.dp)) })
         }
         vm.pendingImage?.let { path -> PendingPhoto(path, onRemove = { vm.removeImage() }) }
         if (vm.importingImage) LinearProgressIndicator(Modifier.fillMaxWidth())
-        Composer(input, onInput = { input = it }, busy = busy, enabled = activeId != null,
-            canSendEmpty = vm.pendingImage != null,
-            onSend = { if (input.isNotBlank() || vm.pendingImage != null) { vm.send(input); input = "" } }, onStop = { if (runningRun != null) nav.navigate("workflow/${runningRun.id}") else vm.stop() },
-            footer = if (vm.dictating) "Listening… tap the mic to finish" else stats?.let { "Last reply %.1f tok/s · prompt %.0f tok/s".format(it.genTps, it.promptTps) },
-            attach = {
-                Box {
-                    IconButton(onClick = { attachMenu = true }, enabled = activeId != null && !busy, modifier = Modifier.padding(4.dp).size(44.dp)) {
-                        Icon(Icons.Outlined.AddPhotoAlternate, "Attach a photo", tint = La.colors.text2)
-                    }
-                    DropdownMenu(attachMenu, { attachMenu = false }) {
-                        DropdownMenuItem({ Text("Take a photo") }, { attachMenu = false; takePhoto() }, leadingIcon = { Icon(Icons.Outlined.PhotoCamera, null) })
-                        DropdownMenuItem({ Text("Choose from gallery") }, { attachMenu = false; pickPhoto() }, leadingIcon = { Icon(Icons.Outlined.Image, null) })
-                    }
-                }
-            },
-            mic = if (vm.voiceAvailable) ({ onMic() }) else null, dictating = vm.dictating, level = vm.dictationLevel)
+        PillComposer(input, onInput = { input = it }, busy = busy, enabled = activeId != null, canSendEmpty = vm.pendingImage != null,
+            onPlus = { plusSheet = true },
+            onSend = { if (input.isNotBlank() || vm.pendingImage != null) { vm.send(input); input = "" } },
+            onStop = { if (runningRun != null) nav.navigate("workflow/${runningRun.id}") else vm.stop() },
+            onMic = if (vm.voiceAvailable) ({ onMic() }) else null, dictating = vm.dictating, level = vm.dictationLevel,
+            onVoiceMode = { nav.navigate("voice/${vm.id}") },
+            footer = if (vm.dictating) "Listening… tap the mic to finish" else stats?.let { "%.1f tok/s · on this phone".format(it.genTps) })
     }
+    }
+    if (plusSheet) PlusSheet(onDismiss = { plusSheet = false },
+        onCamera = { plusSheet = false; takePhoto() }, onPhotos = { plusSheet = false; pickPhoto() },
+        onKnowledge = { plusSheet = false; showKbs = true }, onAgent = { plusSheet = false; showAgents = true },
+        onScam = { plusSheet = false; nav.navigate("scam") }, onRead = { plusSheet = false; nav.navigate("read") }, onDocs = { plusSheet = false; nav.navigate("studio") },
+        knowledgeOn = selectedKbs.isNotEmpty(), agentLabel = when { supervisor -> "Supervisor"; agent != null -> agent.name; else -> null })
 
     vm.exported?.let { f ->
         AlertDialog(onDismissRequest = { vm.exported = null }, title = { Text("Saved ${f.extension.uppercase()}") },
@@ -613,31 +671,168 @@ private fun PendingPhoto(path: String, onRemove: () -> Unit) {
     }
 }
 
+/** ChatGPT-style composer: + · text · mic · (voice mode | send | stop). */
 @Composable
-private fun Composer(
-    value: String, onInput: (String) -> Unit, busy: Boolean, enabled: Boolean, onSend: () -> Unit, onStop: () -> Unit, footer: String?,
-    canSendEmpty: Boolean = false, attach: (@Composable () -> Unit)? = null, mic: (() -> Unit)? = null, dictating: Boolean = false, level: Float = 0f,
+private fun PillComposer(
+    value: String, onInput: (String) -> Unit, busy: Boolean, enabled: Boolean, canSendEmpty: Boolean,
+    onPlus: () -> Unit, onSend: () -> Unit, onStop: () -> Unit, onMic: (() -> Unit)?, dictating: Boolean, level: Float,
+    onVoiceMode: () -> Unit, footer: String?,
 ) {
-    Column(Modifier.fillMaxWidth().background(La.colors.surface1).navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
-        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(La.colors.surface2).border(1.dp, La.colors.line, RoundedCornerShape(24.dp)).padding(4.dp),
-            verticalAlignment = Alignment.Bottom) {
-            attach?.invoke()
-            TextField(value, onInput, modifier = Modifier.weight(1f), placeholder = { Text("Message") }, maxLines = 6, enabled = enabled,
-                colors = TextFieldDefaults.colors(focusedContainerColor = La.colors.surface2, unfocusedContainerColor = La.colors.surface2, disabledContainerColor = La.colors.surface2,
-                    focusedIndicatorColor = La.colors.surface2, unfocusedIndicatorColor = La.colors.surface2, disabledIndicatorColor = La.colors.surface2))
-            if (mic != null && !busy && (value.isBlank() || dictating)) {
-                IconButton(onClick = mic, enabled = enabled, modifier = Modifier.padding(4.dp).size(44.dp).clip(CircleShape)
-                    .background(if (dictating) La.colors.accent.copy(alpha = 0.25f + 0.6f * level) else La.colors.surface3)) {
-                    Icon(Icons.Outlined.Mic, if (dictating) "Stop dictation" else "Dictate", tint = if (dictating) La.colors.onAccent else La.colors.text2)
+    Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 8.dp)) {
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(30.dp)).background(La.colors.surface2).border(1.dp, La.colors.line, RoundedCornerShape(30.dp)).padding(horizontal = 6.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onPlus, enabled = enabled && !busy, modifier = Modifier.size(42.dp)) { Icon(Icons.Outlined.Add, "Add photo, files and more", tint = La.colors.text) }
+            Box(Modifier.weight(1f).padding(horizontal = 4.dp)) {
+                if (value.isEmpty()) Text(if (dictating) "Listening…" else "Ask LOCAL AI", color = La.colors.text3, fontSize = 16.sp)
+                androidx.compose.foundation.text.BasicTextField(value, onInput, enabled = enabled, maxLines = 6,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = La.colors.text, fontSize = 16.sp),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(La.colors.accent), modifier = Modifier.fillMaxWidth())
+            }
+            if (onMic != null && !busy) IconButton(onClick = onMic, enabled = enabled, modifier = Modifier.size(42.dp).clip(CircleShape)
+                .background(if (dictating) La.colors.accent.copy(alpha = 0.25f + 0.6f * level) else androidx.compose.ui.graphics.Color.Transparent)) {
+                Icon(Icons.Outlined.Mic, if (dictating) "Stop dictation" else "Dictate", tint = if (dictating) La.colors.onAccent else La.colors.text)
+            }
+            Spacer(Modifier.width(4.dp))
+            val sendable = enabled && (value.isNotBlank() || canSendEmpty)
+            when {
+                busy -> IconButton(onClick = onStop, modifier = Modifier.size(44.dp).clip(CircleShape).background(La.colors.text)) { Icon(Icons.Outlined.Stop, "Stop generating", tint = La.colors.bg) }
+                sendable -> IconButton(onClick = onSend, modifier = Modifier.size(44.dp).clip(CircleShape).background(La.colors.accent)) { Icon(Icons.Outlined.ArrowUpward, "Send", tint = La.colors.onAccent) }
+                else -> IconButton(onClick = onVoiceMode, enabled = enabled, modifier = Modifier.size(44.dp).clip(CircleShape).background(if (enabled) La.colors.accent else La.colors.surface4)) {
+                    Icon(Icons.Outlined.GraphicEq, "Voice mode", tint = La.colors.onAccent)
                 }
             }
-            val sendable = enabled && (value.isNotBlank() || canSendEmpty)
-            val bg = if (busy) La.colors.text else La.colors.accent
-            IconButton(onClick = if (busy) onStop else onSend, enabled = busy || sendable,
-                modifier = Modifier.padding(4.dp).size(44.dp).clip(CircleShape).background(if (busy || sendable) bg else La.colors.surface4)) {
-                Icon(if (busy) Icons.Outlined.Stop else Icons.AutoMirrored.Outlined.Send, if (busy) "Stop generating" else "Send", tint = if (busy) La.colors.bg else La.colors.onAccent)
+        }
+        if (footer != null) Text(footer, fontSize = 11.sp, color = La.colors.text3, modifier = Modifier.fillMaxWidth().padding(top = 6.dp), textAlign = TextAlign.Center)
+    }
+}
+
+/** "+" sheet: camera and photos up top, then tools for this chat. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun PlusSheet(
+    onDismiss: () -> Unit, onCamera: () -> Unit, onPhotos: () -> Unit, onKnowledge: () -> Unit, onAgent: () -> Unit,
+    onScam: () -> Unit, onRead: () -> Unit, onDocs: () -> Unit, knowledgeOn: Boolean, agentLabel: String?,
+) {
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = La.colors.surface1) {
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                listOf(Triple(Icons.Outlined.PhotoCamera, "Camera", onCamera), Triple(Icons.Outlined.Image, "Photos", onPhotos), Triple(Icons.AutoMirrored.Outlined.MenuBook, "Knowledge", onKnowledge)).forEach { (icon, label, go) ->
+                    Column(Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).background(La.colors.surface2).clickable(onClick = go).padding(vertical = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(icon, null, tint = La.colors.text); Spacer(Modifier.height(6.dp)); Text(label, fontSize = 13.sp)
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            SheetRow(Icons.Outlined.SmartToy, "Agent mode", agentLabel ?: "Off · plain chat with the model", onAgent)
+            SheetRow(Icons.AutoMirrored.Outlined.MenuBook, "Knowledge bases", if (knowledgeOn) "On · answers cite your documents" else "Answer from your documents", onKnowledge)
+            SheetRow(Icons.Outlined.GppMaybe, "Scam check", "Is a message or screenshot a fraud?", onScam)
+            SheetRow(Icons.Outlined.RecordVoiceOver, "Read it to me", "Photo of a letter, bill or label, read aloud", onRead)
+            SheetRow(Icons.Outlined.Description, "Documents", "Write or convert PDF and Word", onDocs)
+        }
+    }
+}
+
+@Composable
+private fun SheetRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, sub: String, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(horizontal = 6.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = La.colors.text2)
+        Column(Modifier.padding(start = 14.dp)) { Text(title, fontSize = 15.sp, fontWeight = FontWeight.Medium); Text(sub, fontSize = 12.5.sp, color = La.colors.text3) }
+    }
+}
+
+/** Side drawer: search, app sections, pinned chats, recent chats, and a New chat button. */
+@Composable
+private fun ChatDrawer(
+    nav: NavController, list: List<ConversationSummary>, currentId: String, onOpen: (String) -> Unit, onNew: () -> Unit,
+    onPin: (String, Boolean) -> Unit, onRename: (String, String) -> Unit, onDelete: (String) -> Unit, close: () -> Unit,
+) {
+    var query by remember { mutableStateOf("") }
+    var searching by remember { mutableStateOf(false) }
+    var menuFor by remember { mutableStateOf<ConversationSummary?>(null) }
+    var renaming by remember { mutableStateOf<ConversationSummary?>(null) }
+    val go: (String) -> Unit = { r -> close(); nav.navigate(r) }
+    androidx.compose.material3.ModalDrawerSheet(drawerContainerColor = La.colors.bg, modifier = Modifier.widthIn(max = 330.dp)) {
+        Box(Modifier.fillMaxSize()) {
+            LazyColumn(Modifier.fillMaxSize().statusBarsPadding(), contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 96.dp)) {
+                item {
+                    Row(Modifier.fillMaxWidth().padding(start = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (searching) androidx.compose.material3.OutlinedTextField(query, { query = it }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Search chats") })
+                        else Text("LOCAL AI", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        IconButton(onClick = { searching = !searching; if (!searching) query = "" }, Modifier.clip(CircleShape).background(La.colors.surface1)) {
+                            Icon(if (searching) Icons.Outlined.Close else Icons.Outlined.Search, if (searching) "Close search" else "Search chats")
+                        }
+                    }
+                }
+                if (!searching) {
+                    val sections = listOf(
+                        Triple(Icons.Outlined.Home, "Home", "home"), Triple(Icons.Outlined.PhotoCamera, "Ask a photo", "photo"),
+                        Triple(Icons.Outlined.GppMaybe, "Scam check", "scam"), Triple(Icons.Outlined.RecordVoiceOver, "Read it to me", "read"),
+                        Triple(Icons.Outlined.Description, "Documents", "studio"), Triple(Icons.Outlined.SmartToy, "Agents", "agents"),
+                        Triple(Icons.AutoMirrored.Outlined.MenuBook, "Knowledge", "knowledge"), Triple(Icons.Outlined.Memory, "Models", "models"),
+                    )
+                    items(sections) { (icon, label, route) ->
+                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable {
+                            if (route == "photo") go("newchat?attach=1") else go(route)
+                        }.padding(horizontal = 8.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(icon, null, tint = La.colors.text); Text(label, fontSize = 16.sp, modifier = Modifier.padding(start = 16.dp))
+                        }
+                    }
+                }
+                val filtered = list.filter { query.isBlank() || it.title.contains(query, true) || (it.lastMessage ?: "").contains(query, true) }
+                    .filter { it.lastMessage != null || it.id == currentId }
+                val pinned = filtered.filter { it.pinned }
+                if (pinned.isNotEmpty()) {
+                    item { Text("Pinned", fontWeight = FontWeight.SemiBold, fontSize = 15.sp, modifier = Modifier.padding(start = 8.dp, top = 18.dp, bottom = 6.dp)) }
+                    items(pinned, key = { "p" + it.id }) { c -> DrawerChat(c, c.id == currentId, { onOpen(c.id) }, { menuFor = c }) }
+                }
+                item { Text(if (query.isBlank()) "Chats" else "Results", fontWeight = FontWeight.SemiBold, fontSize = 15.sp, modifier = Modifier.padding(start = 8.dp, top = 18.dp, bottom = 6.dp)) }
+                val rest = filtered.filter { !it.pinned }
+                if (rest.isEmpty()) item { Text(if (query.isBlank()) "Your chats will appear here." else "No chats match.", color = La.colors.text3, fontSize = 13.sp, modifier = Modifier.padding(8.dp)) }
+                items(rest, key = { it.id }) { c -> DrawerChat(c, c.id == currentId, { onOpen(c.id) }, { menuFor = c }) }
+            }
+            Row(Modifier.align(Alignment.BottomStart).fillMaxWidth().background(La.colors.bg).navigationBarsPadding().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Button(onClick = onNew, shape = RoundedCornerShape(26.dp), contentPadding = PaddingValues(horizontal = 22.dp, vertical = 14.dp)) {
+                    Icon(Icons.Outlined.EditNote, null); Spacer(Modifier.width(8.dp)); Text("New chat", fontSize = 16.sp)
+                }
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = { go("settings") }, Modifier.size(48.dp).clip(CircleShape).background(La.colors.surface1)) { Icon(Icons.Outlined.Settings, "Settings") }
             }
         }
-        if (footer != null) Text(footer, fontSize = 11.sp, color = La.colors.text3, modifier = Modifier.padding(start = 12.dp, top = 6.dp))
     }
+    menuFor?.let { c ->
+        AlertDialog(onDismissRequest = { menuFor = null }, title = { Text(c.title, maxLines = 2) },
+            text = { Column {
+                TextButton(onClick = { onPin(c.id, !c.pinned); menuFor = null }) { Icon(Icons.Outlined.PushPin, null); Text(if (c.pinned) "  Unpin" else "  Pin") }
+                TextButton(onClick = { renaming = c; menuFor = null }) { Icon(Icons.Outlined.Edit, null); Text("  Rename") }
+                TextButton(onClick = { onDelete(c.id); menuFor = null }) { Icon(Icons.Outlined.Delete, null, tint = La.colors.bad); Text("  Delete", color = La.colors.bad) }
+            } },
+            confirmButton = { TextButton(onClick = { menuFor = null }) { Text("Close") } })
+    }
+    renaming?.let { c ->
+        var t by remember(c.id) { mutableStateOf(c.title) }
+        AlertDialog(onDismissRequest = { renaming = null }, title = { Text("Rename chat") },
+            text = { OutlinedTextField(t, { t = it }, singleLine = true) },
+            confirmButton = { TextButton(onClick = { onRename(c.id, t); renaming = null }) { Text("Save") } },
+            dismissButton = { TextButton(onClick = { renaming = null }) { Text("Cancel") } })
+    }
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun DrawerChat(c: ConversationSummary, selected: Boolean, onClick: () -> Unit, onLong: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (selected) La.colors.surface2 else androidx.compose.ui.graphics.Color.Transparent)
+        .combinedClickable(onClick = onClick, onLongClick = onLong).padding(horizontal = 8.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Outlined.ChatBubbleOutline, null, tint = La.colors.text2, modifier = Modifier.size(20.dp))
+        Text(c.title, fontSize = 15.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(start = 16.dp).weight(1f))
+    }
+}
+
+/** Opening "newchat" makes a fresh conversation and shows it (empty ones are cleaned up when left). */
+@Composable
+fun NewChatEntry(nav: NavController, attach: Boolean, vm: ChatListViewModel = hiltViewModel()) {
+    LaunchedEffect(Unit) {
+        val id = vm.create()
+        nav.navigate("chat/$id" + if (attach) "?attach=1" else "") { popUpTo("newchat?attach={attach}") { inclusive = true } }
+    }
+    Box(Modifier.fillMaxSize().background(La.colors.bg))
 }

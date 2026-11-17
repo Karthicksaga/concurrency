@@ -124,19 +124,32 @@ object Ocr {
         OcrResult(cleanup(text), conf)
     }
 
-    /** Reads a stored photo at OCR resolution (longest side ≤ 2400 px). */
-    suspend fun recognizeFile(context: Context, file: File, langs: String): OcrResult? {
+    /**
+     * Reads a stored photo. Runs in the separate ":ocr" process (OcrService), so a crash inside Tesseract or Leptonica
+     * on a strange image fails only this file instead of closing the app.
+     */
+    suspend fun recognizeFile(context: Context, file: File, langs: String): OcrResult? = OcrClient.recognizeFile(context, file, langs)
+
+    /** Scanned PDF pages, read in the ":ocr" process. */
+    suspend fun recognizePdf(context: Context, file: File, langs: String, maxPages: Int, onPage: (Int, Int) -> Unit = { _, _ -> }): List<Pair<Int, String>> =
+        OcrClient.recognizePdf(context, file, langs, maxPages)
+
+    /** In-process: reads a photo at OCR resolution (longest side ≤ 2400 px, ≤ 6 MP). Called by OcrService only. */
+    suspend fun recognizeFileLocal(context: Context, file: File, langs: String): OcrResult? {
         val bmp = withContext(Dispatchers.IO) {
             val b = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeFile(file.path, b)
             if (b.outWidth <= 0) return@withContext null
-            BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = Images.sampleSize(b.outWidth, b.outHeight, 2400) })
+            if (b.outWidth.toLong() * b.outHeight > 200_000_000L) return@withContext null          // absurd dimensions: refuse
+            var sample = Images.sampleSize(b.outWidth, b.outHeight, 2400)
+            while ((b.outWidth / sample).toLong() * (b.outHeight / sample) > 6_000_000L) sample *= 2
+            BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 })
         } ?: return null
         return try { recognize(context, bmp, langs) } finally { bmp.recycle() }
     }
 
-    /** OCR for PDFs without a text layer: renders each page at ~200 dpi. Returns text per page (1-based). */
-    suspend fun recognizePdf(context: Context, file: File, langs: String, maxPages: Int, onPage: (Int, Int) -> Unit = { _, _ -> }): List<Pair<Int, String>> {
+    /** In-process OCR for PDFs without a text layer: renders each page at ~200 dpi. Returns text per page (1-based). Called by OcrService only. */
+    suspend fun recognizePdfLocal(context: Context, file: File, langs: String, maxPages: Int, onPage: (Int, Int) -> Unit = { _, _ -> }): List<Pair<Int, String>> {
         val out = ArrayList<Pair<Int, String>>()
         withContext(Dispatchers.IO) { ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY) }.use { fd ->
             PdfRenderer(fd).use { r ->

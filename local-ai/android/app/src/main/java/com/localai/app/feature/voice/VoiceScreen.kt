@@ -105,6 +105,12 @@ class VoiceViewModel @Inject constructor(
     var onDevice by mutableStateOf<Boolean?>(null); private set
     /** Keep the conversation going after each answer. */
     var handsFree by mutableStateOf(true)
+    /** No recognition service works on this phone: each turn uses Android's voice-typing screen instead. */
+    var useVoiceTyping by mutableStateOf(false); private set
+    /** Incremented to ask the screen to open the voice-typing screen. */
+    var voiceTypingRequest by mutableStateOf(0); private set
+    fun voiceTypingIntent(lang: String) = input.voiceTypingIntent(lang)
+    fun heardTyped(text: String?) { if (text.isNullOrBlank()) { phase = VoicePhase.IDLE; return }; silentTurns = 0; ask(text) }
     private var active = true
     private var turn: Job? = null
     private var silentTurns = 0
@@ -123,6 +129,7 @@ class VoiceViewModel @Inject constructor(
         if (!active) return
         if (chat.live.value != null) { error = "The model is busy with another reply."; phase = VoicePhase.IDLE; return }
         output.stop()
+        if (useVoiceTyping) { phase = VoicePhase.LISTENING; heard = ""; voiceTypingRequest++; return }
         phase = VoicePhase.LISTENING; heard = ""; level = 0f
         viewModelScope.launch {
             input.listen(settings.current().voiceLanguage) { e ->
@@ -131,7 +138,14 @@ class VoiceViewModel @Inject constructor(
                     is HeardEvent.Partial -> heard = e.text
                     is HeardEvent.Level -> level = e.rms
                     is HeardEvent.Final -> { level = 0f; if (e.text.isBlank()) quiet() else { silentTurns = 0; ask(e.text) } }
-                    is HeardEvent.Error -> { level = 0f; if (e.noSpeech) quiet() else { error = e.message; phase = VoicePhase.IDLE } }
+                    is HeardEvent.Error -> {
+                        level = 0f
+                        when {
+                            e.offerVoiceTyping -> { useVoiceTyping = true; voiceTypingRequest++ }   // fall back to the system voice-typing screen
+                            e.noSpeech -> quiet()
+                            else -> { error = e.message; phase = VoicePhase.IDLE }
+                        }
+                    }
                 }
             }
         }
@@ -189,6 +203,12 @@ fun VoiceScreen(nav: NavController, vm: VoiceViewModel = hiltViewModel()) {
         if (!asked) { asked = true; if (hasMic()) vm.listen() else permission.launch(Manifest.permission.RECORD_AUDIO) }
     }
     DisposableEffect(Unit) { vm.resume(); onDispose { vm.pause() } }
+    val voiceTyping = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
+        vm.heardTyped(res.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull())
+    }
+    LaunchedEffect(vm.voiceTypingRequest) {
+        if (vm.voiceTypingRequest > 0) runCatching { voiceTyping.launch(vm.voiceTypingIntent("")) }.onFailure { vm.heardTyped(null) }
+    }
 
     val phase = vm.phase
     val pulse = rememberInfiniteTransition(label = "pulse")
@@ -201,7 +221,7 @@ fun VoiceScreen(nav: NavController, vm: VoiceViewModel = hiltViewModel()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Voice", style = MaterialTheme.typography.titleLarge)
-                Text(when (vm.onDevice) { true -> "Speech recognised on this phone"; false -> "Speech via the system recognizer (offline when its language pack is installed)"; null -> "Answers by your on-device model" },
+                Text(when { vm.useVoiceTyping -> "Using Android voice typing (this phone's recognizer service didn't work)"; vm.onDevice == true -> "Speech recognised on this phone"; vm.onDevice == false -> "Speech via the system recognizer"; else -> "Answers by your on-device model" },
                     fontSize = 11.5.sp, color = La.colors.text3)
             }
             IconButton(onClick = { nav.popBackStack(); nav.navigate("chat/${vm.id}") }) { Icon(Icons.AutoMirrored.Outlined.Chat, "Show as chat", tint = La.colors.text2) }

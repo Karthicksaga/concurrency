@@ -47,13 +47,13 @@ window.LA = window.LA || {};
   };
 
   /** Photo picker sheet: camera, gallery or a sample photo. Calls back with a photo key or data URL. */
-  LA.photoSheet = function (onPick, withDocs) {
+  LA.photoSheet = function (onPick, withDocs, extra) {
     LA.sheet({
-      title: 'Add a photo',
+      title: extra ? 'Add to chat' : 'Add a photo',
       body: `<div class="photo-pick"><label class="li tap">${I('camera')}<div class="grow"><div class="t">Take a photo</div><div class="s">Opens the camera app. No camera permission needed.</div></div><input type="file" accept="image/*" capture="environment" data-change="photo-file" hidden></label>
         <label class="li tap">${I('image')}<div class="grow"><div class="t">Choose from gallery</div><div class="s">System photo picker</div></div><input type="file" accept="image/*" data-change="photo-file" hidden></label></div>
         <div class="eyebrow">Sample photos</div><div class="photo-grid">${Object.entries(LA.PHOTOS).map(([k, p]) => `<button data-action="photo-sample" data-k="${k}" aria-label="${esc(p.title)}"><img src="${p.src}" alt=""><span>${esc(p.title)}</span></button>`).join('')}</div>
-        ${withDocs ? `<button class="li" data-action="photo-docs">${I('attach')}<div class="grow"><div class="t">Attach a document instead</div><div class="s">PDF, Word, text</div></div></button>` : ''}`,
+        ${withDocs ? `<button class="li" data-action="photo-docs">${I('attach')}<div class="grow"><div class="t">Attach a document instead</div><div class="s">PDF, Word, text</div></div></button>` : ''}${extra || ''}`,
       focus: false,
       handlers: {
         'photo-file': (el) => { const f = el.files && el.files[0]; if (f) LA.readPhoto(f, (url) => { LA.closeSheet(); onPick(url); }); },
