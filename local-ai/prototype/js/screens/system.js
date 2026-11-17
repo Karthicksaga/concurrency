@@ -50,28 +50,36 @@ window.LA = window.LA || {};
           ${row('Default KV cache', 'q8_0 halves context memory.', C.seg('KV cache', [['f16', 'f16'], ['q8_0', 'q8_0']], st.kvType, 'kv'))}
           ${row('GPU acceleration (experimental)', d.gpu + ' via OpenCL. Enabled only after a self-test passes.', C.sw('s-gpu', st.gpu, 'gpu', 'GPU acceleration'))}
           ${row('Unload model when idle', 'After 5 minutes in the background.', C.sw('s-idle', true, 'noop', 'Unload when idle'))}</div>
+        ${C.sectionH('Voice')}<div class="list">
+          ${row('Voice language', 'For dictation, voice conversation and reading aloud. Speech is recognised on the phone when its offline speech pack is installed.', `<select class="select" id="s-vlang" data-change="vlang" style="max-width:150px">${LA.VOICE_LANGS.map(([k, l]) => `<option value="${k}" ${st.voiceLang === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
+          ${row('Speaking speed', '', C.seg('Speaking speed', [['0.8', 'Slow'], ['1', 'Normal'], ['1.25', 'Fast']], String(st.speechRate || 1), 'vrate'))}
+          ${row('Read replies aloud', 'Speak every answer in chat.', C.sw('s-read', st.readAloud, 'readaloud', 'Read replies aloud'))}</div>
         ${C.sectionH('Knowledge & memory')}<div class="list">
           ${row('Index only while charging', 'Pauses background indexing on battery.', C.sw('s-charge', st.indexOnCharge, 'charge', 'Index only while charging'))}
           ${row('Approve new memories', 'Agents propose memories; you decide what is saved.', C.sw('s-mem', st.memoryApproval, 'memappr', 'Approve new memories'))}</div>
         ${C.sectionH('Privacy')}<div class="list">
           ${row('Internet access', 'Only for model downloads and catalog updates.', '<span class="status ok">Downloads only</span>')}
+          ${row('Phone data', 'No SMS, contacts or call-log access. Photos come from the camera app or picker, one at a time.', '<span class="status ok">None</span>')}
           ${row('Analytics and crash reporting', 'None. Nothing is collected.', '<span class="status pending">Off</span>')}
           ${row('App lock', 'Require fingerprint or PIN to open.', C.sw('s-lock', st.appLock, 'lock', 'App lock'))}
           <button class="li" data-action="netlog">${I('signal')}<div class="grow"><div class="t small">Network log</div><div class="s">Every connection this app made</div></div>${I('chevron', 'icon-sm')}</button></div>
         ${C.sectionH('Storage')}<div class="card">${storage()}</div>
         ${C.sectionH('Data')}<div class="list"><button class="li" data-action="wipe" style="color:var(--bad)">${I('trash')}<div class="grow"><div class="t small">Erase everything</div><div class="s">Models, documents, chats, agents and memories</div></div></button></div>
-        ${C.sectionH('Prototype')}<div class="list"><button class="li" data-action="restore">${I('refresh')}<div class="grow"><div class="t small">Restore demo data</div><div class="s">Resets every change you made in this prototype</div></div></button><button class="li" data-action="screens">${I('grid')}<div class="grow"><div class="t small">Screen index</div><div class="s">Jump to any of the 17 prototype screens</div></div></button><button class="li" data-action="onb">${I('sparkle')}<div class="grow"><div class="t small">Replay onboarding</div></div></button></div>
+        ${C.sectionH('Prototype')}<div class="list"><button class="li" data-action="restore">${I('refresh')}<div class="grow"><div class="t small">Restore demo data</div><div class="s">Resets every change you made in this prototype</div></div></button><button class="li" data-action="screens">${I('grid')}<div class="grow"><div class="t small">Screen index</div><div class="s">Jump to any of the ${LA.SCREENS.length} prototype screens</div></div></button><button class="li" data-action="onb">${I('sparkle')}<div class="grow"><div class="t small">Replay onboarding</div></div></button></div>
         <p class="xs faint" style="text-align:center;margin:0">LOCAL AI · UI prototype · sample data only</p>
       </div></div>`;
     },
     changes: {
       gpu: (el) => { LA.S.settings.gpu = el.checked; LA.save(); LA.toast(el.checked ? 'GPU will be tested on next model load (simulated)' : 'Using CPU'); },
       charge: (el) => { LA.S.settings.indexOnCharge = el.checked; LA.save(); }, memappr: (el) => { LA.S.settings.memoryApproval = el.checked; LA.save(); },
-      lock: (el) => { LA.S.settings.appLock = el.checked; LA.save(); }, noop: () => {}
+      lock: (el) => { LA.S.settings.appLock = el.checked; LA.save(); }, noop: () => {},
+      vlang: (el) => { LA.S.settings.voiceLang = el.value; LA.save(); LA.toast('Voice language: ' + el.options[el.selectedIndex].text); },
+      readaloud: (el) => { LA.S.settings.readAloud = el.checked; LA.save(); }
     },
     actions: {
       look: (el) => { LA.S.look = el.getAttribute('data-v'); LA.applyLook(); LA.save(); LA.refresh(); },
       dev: (el) => { LA.S.deviceId = el.getAttribute('data-v'); LA.S.profiles = {}; LA.save(); LA.refresh(); LA.toast('Simulating ' + LA.device().label); },
+      vrate: (el) => { LA.S.settings.speechRate = +el.getAttribute('data-v'); LA.save(); LA.refresh(); },
       threads: (el) => { LA.S.settings.threads = el.getAttribute('data-v'); LA.save(); LA.refresh(); },
       kv: (el) => { LA.S.settings.kvType = el.getAttribute('data-v'); LA.S.profiles = {}; LA.save(); LA.refresh(); },
       netlog: () => LA.sheet({ title: 'Network log', body: `<p class="small muted" style="margin:0">Sample entries. The app records host, path and size of every request for 30 days.</p><div class="list">${LA.S.networkLog.map((n) => `<div class="li" style="align-items:flex-start">${I('download')}<div class="grow"><div class="t small">${esc(n.host)}</div><div class="mono" style="color:var(--text-2);overflow-wrap:anywhere">${esc(n.path)}</div><div class="xs faint">${esc(n.why)} · ${n.bytes} · ${F.ago(n.at)}</div></div></div>`).join('')}</div>` }),

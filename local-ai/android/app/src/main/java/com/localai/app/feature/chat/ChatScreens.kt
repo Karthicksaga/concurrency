@@ -433,7 +433,10 @@ fun ChatScreen(nav: NavController, vm: ChatViewModel = hiltViewModel()) {
             if (myLive != null) item {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(agent?.name ?: modelName, fontSize = 12.sp, color = La.colors.text3)
-                    if (myLive.text.isEmpty()) { Text(myLive.phase.ifBlank { "Thinking…" }, color = La.colors.text2, fontSize = 13.sp); LinearProgressIndicator(Modifier.fillMaxWidth(0.5f)) }
+                    if (myLive.text.isEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
+                        com.localai.app.core.designsystem.ModelLoadingMark(34.dp)
+                        Text("  " + myLive.phase.ifBlank { "Thinking…" }, color = La.colors.text2, fontSize = 13.sp)
+                    }
                     else MarkdownText(myLive.text + " ▍")
                 }
             }

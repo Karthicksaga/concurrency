@@ -24,6 +24,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -75,9 +76,22 @@ fun androidx.navigation.NavController.goTab(route: String) = navigate(route) {
 
 @Composable
 fun AppRoot(openChat: kotlinx.coroutines.flow.MutableStateFlow<String?>, vm: RootViewModel = hiltViewModel()) {
-    val pendingChat by openChat.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
-    val s: AppSettings = settings ?: return   // DataStore not read yet: keep the splash background
+    // Launch animation once per app start (not on rotation); the app loads underneath it.
+    var splash by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(true) }
+    Box(Modifier.fillMaxSize()) {
+        settings?.let { AppContent(openChat, it) }
+        androidx.compose.animation.AnimatedVisibility(splash, enter = androidx.compose.animation.EnterTransition.None,
+            exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(420)) +
+                androidx.compose.animation.scaleOut(androidx.compose.animation.core.tween(420), targetScale = 1.04f)) {
+            com.localai.app.core.designsystem.LaunchSplash(ready = settings != null) { splash = false }
+        }
+    }
+}
+
+@Composable
+private fun AppContent(openChat: kotlinx.coroutines.flow.MutableStateFlow<String?>, s: AppSettings) {
+    val pendingChat by openChat.collectAsStateWithLifecycle()
     val dark = when (s.theme) { ThemeMode.DARK -> true; ThemeMode.LIGHT -> false; ThemeMode.SYSTEM -> isSystemInDarkTheme() }
     val activity = LocalContext.current as? ComponentActivity
     LaunchedEffect(dark) {

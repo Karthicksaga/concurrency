@@ -159,7 +159,13 @@ fun HomeScreen(nav: NavController, vm: HomeViewModel = hiltViewModel()) {
                 Text(active.name, style = MaterialTheme.typography.titleMedium)
                 Text("${active.quant} · ${(ready?.config?.contextLength ?: policy.defaults.contextLength) / 1024}K context · ${policy.threads} threads · batch ${policy.defaults.batchSize}",
                     color = La.colors.text2, fontSize = 12.5.sp)
-                if (eng is EngineState.Loading) { Spacer(Modifier.height(10.dp)); LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                if (eng is EngineState.Loading) {
+                    Spacer(Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        com.localai.app.core.designsystem.ModelLoadingMark(40.dp)
+                        Text("  Loading into memory…", fontSize = 12.5.sp, color = La.colors.text2)
+                    }
+                }
                 (eng as? EngineState.Failed)?.let { Spacer(Modifier.height(8.dp)); Text(it.message, color = La.colors.bad, fontSize = 12.5.sp) }
                 error?.let { Spacer(Modifier.height(8.dp)); Text(it, color = La.colors.bad, fontSize = 12.5.sp) }
                 Spacer(Modifier.height(10.dp))

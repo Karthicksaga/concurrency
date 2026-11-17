@@ -188,7 +188,17 @@ window.LA = window.LA || {};
         continue;
       }
       let m;
-      if ((m = ln.match(/^#{1,4}\s+(.*)/))) { closeList(); out.push(`<h3>${inline(m[1])}</h3>`); }
+      if (/^\s*\|/.test(ln) && i + 1 < lines.length && /^\s*\|?\s*:?-{3,}/.test(lines[i + 1])) {
+        closeList();
+        const cells = (l) => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((x) => inline(x.trim()));
+        const head = cells(ln); const rows = []; i += 2;
+        while (i < lines.length && /^\s*\|/.test(lines[i])) { rows.push(cells(lines[i])); i++; }
+        out.push(`<div class="md-table"><table><thead><tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`);
+        continue;
+      }
+      if ((m = ln.match(/^>\s?(.*)/))) { closeList(); out.push(`<blockquote>${inline(m[1])}</blockquote>`); }
+      else if (/^\s*(-{3,}|\*{3,})\s*$/.test(ln)) { closeList(); out.push('<hr>'); }
+      else if ((m = ln.match(/^#{1,4}\s+(.*)/))) { closeList(); out.push(`<h3>${inline(m[1])}</h3>`); }
       else if ((m = ln.match(/^\s*[-*]\s+(.*)/))) { if (!list || list.type !== 'ul') { closeList(); list = { type: 'ul' }; out.push('<ul>'); } out.push(`<li>${inline(m[1])}</li>`); }
       else if ((m = ln.match(/^\s*\d+\.\s+(.*)/))) { if (!list || list.type !== 'ol') { closeList(); list = { type: 'ol' }; out.push('<ol>'); } out.push(`<li>${inline(m[1])}</li>`); }
       else if (!ln.trim()) { closeList(); }

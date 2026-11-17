@@ -106,7 +106,7 @@ window.LA = window.LA || {};
       return `${C.topbar({ title: greet, sub: 'Everything below runs on this device', actions: C.go('monitor', 'monitor', 'Performance monitor') + C.go('settings', 'prefs', 'Settings') })}
       <div class="scroll"><div class="body">
         ${activeModelCard()}
-        <div class="qa">${[['chat', 'New chat', 'new-chat', 'accent'], ['knowledge', 'Ask docs', 'ask-docs', 'knowledge'], ['workflow', 'Workflow', 'go-workflow', 'agent'], ['upload', 'Import model', 'import-model', 'model']].map(([ic, t, a, h]) => { const c = LA.hue(h); return `<button data-action="${a}"><span class="ic" style="background:${c[0]};color:${c[1]}">${I(ic)}</span>${t}</button>`; }).join('')}</div>
+        <div class="qa">${[['chat', 'New chat', 'new-chat', 'accent'], ['wave', 'Talk', 'talk', 'agent'], ['camera', 'Ask a photo', 'ask-photo', 'model'], ['doc', 'Documents', 'go-studio', 'knowledge'], ['knowledge', 'Ask docs', 'ask-docs', 'knowledge'], ['workflow', 'Workflow', 'go-workflow', 'agent'], ['upload', 'Import model', 'import-model', 'model'], ['models', 'Models', 'go-models', 'accent']].map(([ic, t, a, h]) => { const c = LA.hue(h); return `<button data-action="${a}"><span class="ic" style="background:${c[0]};color:${c[1]}">${I(ic)}</span>${t}</button>`; }).join('')}</div>
         ${ramCard()}
         ${dls.length ? `<div class="card tight tap" data-go="downloads" role="link"><div class="row between"><b class="small">${dls.length} download${dls.length > 1 ? 's' : ''}</b><span class="small faint">View</span></div>${dls.map((d) => { const m = LA.model(d.modelId); return `<div style="margin-top:10px"><div class="row between small"><span class="ellipsis">${esc(m.name)}</span><span class="faint tnum" data-dlt="${d.id}">${d.state === 'paused' ? 'Paused' : Math.round(d.progress * 100) + '%'}</span></div><div style="margin-top:6px" data-dlp="${d.id}">${C.progress(d.progress, d.state === 'paused' ? 'warn' : '')}</div></div>`; }).join('')}</div>` : ''}
         ${C.sectionH('Recent conversations', 'All', 'chat')}
@@ -131,6 +131,17 @@ window.LA = window.LA || {};
       'new-chat': () => LA.newChat({}),
       'ask-docs': () => LA.newChat({ kbs: ['kb-finance'] }),
       'go-workflow': () => LA.go('workflow'),
+      talk: () => LA.go('voice'),
+      'go-studio': () => LA.go('studio'),
+      'go-models': () => LA.go('models'),
+      'ask-photo': () => {
+        LA.photoSheet((p) => {
+          const mid = LA.isVision(LA.S.activeModel) ? LA.S.activeModel : 'smolvlm-500m';
+          LA.newChat({}); const c = LA.S.conversations[0]; c.model = mid; c.pendingPhoto = p;
+          if (mid !== LA.S.activeModel) { LA.loadModel(mid); LA.toast('Switched to SmolVLM 500M (vision)'); }
+          LA.save(); LA.refresh();
+        });
+      },
       'import-model': () => LA.importModelSheet()
     }
   };

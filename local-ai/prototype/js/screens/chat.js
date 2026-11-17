@@ -16,6 +16,8 @@ window.LA = window.LA || {};
   /* ---------- canned, clearly simulated responses ---------- */
   function respond(c, text, variant) {
     const t = text.toLowerCase(); const hasKb = (id) => c.kbs.includes(id);
+    const recent = c.messages.filter((m) => m.role === 'user').slice(-2).find((m) => m.photo);
+    if (recent && LA.isVision(c.model || LA.S.activeModel)) return { text: recent.photo === 'receipt' && /expensive|most|costly/.test(t) ? 'The **basmati rice (5 kg) at 649**, about two-thirds of the bill.' : 'Looking at the same photo again: ' + LA.photoAnswer(recent.photo, text).split('\n')[0] };
     if (hasKb('kb-finance') && /deposit|rent|lease|notice|insurance|clause/.test(t)) return {
       text: variant ? 'Short version: **two months’ rent** as deposit, refunded **within 30 days** after you move out, minus documented deductions [chunk:7]. Give **60 days’ written notice** before leaving [chunk:12].' : 'According to your lease, the security deposit equals **two months’ rent** and is refunded **within 30 days** of the tenancy ending, minus documented deductions [chunk:7].\n\nTermination needs **not less than 60 days’ written notice** from either side [chunk:12]. Minor repairs under 2,000 are your responsibility [chunk:15].',
       sources: [{ n: 7, doc: 'doc-lease', title: 'Lease agreement — Flat 4B.pdf', where: 'p. 4 · Clause 7.2', score: 0.86 }, { n: 12, doc: 'doc-lease', title: 'Lease agreement — Flat 4B.pdf', where: 'p. 6 · Clause 9.1', score: 0.71 }, { n: 15, doc: 'doc-lease', title: 'Lease agreement — Flat 4B.pdf', where: 'p. 7 · Clause 11', score: 0.58 }]
@@ -56,7 +58,7 @@ window.LA = window.LA || {};
       const el = document.querySelector(`.msg[data-i="${idx}"] .md`);
       if (el) el.innerHTML = LA.md(m.text) + '<span class="cursor"></span>';
       const sc = document.querySelector('.scroll'); if (sc && sc.scrollHeight - sc.scrollTop - sc.clientHeight < 140) sc.scrollTop = sc.scrollHeight;
-      if (stream.pos >= tokens.length) { m.text = resp.text; stopStream(false); c.updated = Date.now(); if (LA.cur().hash === 'chat-' + c.id) LA.refresh(); }
+      if (stream.pos >= tokens.length) { m.text = resp.text; stopStream(false); c.updated = Date.now(); if (LA.S.settings.readAloud) LA.speech.speak(m.text, c.id + ':' + idx); if (LA.cur().hash === 'chat-' + c.id) LA.refresh(); }
     };
     stream.timer = setInterval(tick, Math.round(1000 / m.tps));
   }
@@ -68,7 +70,8 @@ window.LA = window.LA || {};
   }
 
   function msgHtml(c, m, i, isLast) {
-    if (m.role === 'user') return `<div class="msg user" data-i="${i}"><div class="bubble">${esc(m.text)}</div></div>`;
+    if (m.role === 'user') return `<div class="msg user" data-i="${i}">${m.photo ? `<img class="photo" src="${LA.photoSrc(m.photo)}" alt="Attached photo">` : ''}${m.text ? `<div class="bubble">${m.voice ? LA.icon('mic', 'icon-sm') + ' ' : ''}${esc(m.text)}</div>` : ''}</div>`;
+    if (m.noVision) return `<div class="msg ai" data-i="${i}"><div class="banner warn">${LA.icon('alert')}<span>${esc((LA.model(m.model) || {}).name || 'This model')} can't see images. Use a vision model such as <b>SmolVLM 500M</b> (fits 4–6 GB phones).</span></div><div class="row" style="gap:8px"><button class="btn btn-tonal btn-sm" data-action="use-vision">${LA.icon('image', 'icon-sm')}Use SmolVLM 500M and retry</button></div></div>`;
     const model = LA.model(m.model) || LA.model(LA.S.activeModel);
     const ag = c.agent && c.agent !== 'supervisor' ? LA.agent(c.agent) : null;
     let wf = '';
@@ -78,8 +81,39 @@ window.LA = window.LA || {};
       wf = `<div class="wf-card"><div class="row between"><b class="small">${I('workflow', 'icon-sm')} Supervisor workflow</b>${live ? C.status(w.status === 'done' ? 'completed' : w.status === 'cancelled' ? 'cancelled' : w.status === 'partial' ? 'failed' : 'running', w.label) : C.status('completed', '7 steps')}</div><div class="wf-mini">${(live ? w.nodes : Array(8).fill('done')).map((s) => `<i class="${s}"></i>`).join('')}</div><button class="btn btn-tonal btn-sm" data-go="workflow">${I('eye', 'icon-sm')}Open workflow</button></div>`;
     }
     const sources = m.sources && !m.streaming ? `<div class="sources">${m.sources.map((s) => `<button class="source" data-action="cite" data-n="${s.n}"><span class="n">${s.n}</span><span class="grow ellipsis">${esc(s.title)}</span><span class="faint xs" style="flex:none">${esc(s.where)}</span></button>`).join('')}</div>` : '';
-    const actions = m.streaming ? '' : `<div class="msg-actions">${C.ib('copy', 'copy-msg', 'Copy response', `data-i="${i}"`)}${isLast ? C.ib('refresh', 'regen', 'Regenerate response') : ''}<span class="sim-note" style="margin-left:6px">${I('info', 'icon-sm')}Simulated · ${m.tps || '—'} tok/s</span></div>`;
+    const speaking = LA.speech.speakingId === c.id + ':' + i;
+    const actions = m.streaming ? '' : `<div class="msg-actions">${C.ib('copy', 'copy-msg', 'Copy response', `data-i="${i}"`)}${C.ib(speaking ? 'stop' : 'volume', 'speak-msg', speaking ? 'Stop reading' : 'Read aloud', `data-i="${i}"${speaking ? ' style="color:var(--accent)"' : ''}`)}${C.ib('doc', 'save-msg', 'Save as PDF or Word', `data-i="${i}"`)}${isLast ? C.ib('refresh', 'regen', 'Regenerate response') : ''}<span class="sim-note" style="margin-left:6px">${I('info', 'icon-sm')}Simulated · ${m.tps || '—'} tok/s</span></div>`;
     return `<div class="msg ai" data-i="${i}"><div class="who">${ag ? C.avatar(ag, 'sm') : ''}<b>${ag ? esc(ag.name) : esc(model.name)}</b>${m.tool ? `<span class="tag">${I('calc', 'icon-sm')}calculator</span>` : ''}</div>${wf}<div class="md">${LA.md(m.text || '')}${m.streaming ? '<span class="cursor"></span>' : ''}${m.stopped ? '<p class="small faint">Generation stopped.</p>' : ''}</div>${sources}${actions}</div>`;
+  }
+
+  /* Dictation: the browser's speech recognizer when present, otherwise a simulated phrase typed in. */
+  let dictating = false; let rec = null; let dictTimer = null;
+  function stopDictation() { dictating = false; clearInterval(dictTimer); dictTimer = null; try { rec && rec.stop(); } catch (e) { /* ignore */ } rec = null; }
+  function startDictation() {
+    const ta = document.getElementById('composer-input'); const base = ta ? ta.value.trim() : '';
+    dictating = true; LA.refresh();
+    const set = (t) => { const el = document.getElementById('composer-input'); if (el) el.value = (base + ' ' + t).trim(); };
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SR) {
+      try {
+        rec = new SR(); rec.interimResults = true; if (LA.S.settings.voiceLang) rec.lang = LA.S.settings.voiceLang;
+        rec.onresult = (e) => set(Array.from(e.results).map((r) => r[0].transcript).join(' '));
+        rec.onend = () => { if (dictating) { stopDictation(); LA.refresh(); } };
+        rec.onerror = () => { try { rec.onend = null; } catch (e) { /* ignore */ } rec = null; simulate(); };
+        let started = false; rec.onaudiostart = () => { started = true; };
+        rec.start();
+        // Some browsers expose a recognizer that never opens the microphone: fall back after 1.5 s.
+        const mine = rec; setTimeout(() => { if (!started && rec === mine && dictating) { try { mine.onend = null; mine.onerror = null; mine.abort(); } catch (e) { /* ignore */ } rec = null; simulate(); } }, 1500);
+        return;
+      } catch (e) { rec = null; }
+    }
+    simulate();
+    // No usable recognizer in this browser (or it needs a network): type a sample phrase instead.
+    function simulate() {
+      if (!dictating) return;
+      const phrase = 'What does this photo show?'.split(' '); let i = 0;
+      dictTimer = setInterval(() => { i++; set(phrase.slice(0, i).join(' ')); if (i >= phrase.length) { stopDictation(); LA.refresh(); LA.toast('Dictation (simulated)'); } }, 260);
+    }
   }
 
   const toBottom = () => { const sc = document.querySelector('.scroll'); if (sc) sc.scrollTop = sc.scrollHeight; };
@@ -97,10 +131,12 @@ window.LA = window.LA || {};
       const kbChip = `<button class="chip sm ${c.kbs.length ? 'on' : ''}" data-action="pick-kb">${I('knowledge', 'icon-sm')}${c.kbs.length ? c.kbs.length === 1 ? esc(LA.kb(c.kbs[0]).name) : c.kbs.length + ' knowledge bases' : 'Knowledge'}</button>`;
       const agentChip = `<button class="chip sm ${c.agentMode || ag ? 'on' : ''}" data-action="pick-agent">${I('agents', 'icon-sm')}${c.agentMode ? 'Agent mode: Supervisor' : ag ? esc(ag.name) : 'Agent mode off'}</button>`;
       const att = (c.attachments || []).map((d) => `<span class="chip sm on">${I('file', 'icon-sm')}${esc(LA.doc(d) ? LA.doc(d).title : d)}</span>`).join('');
-      return `${C.topbar({ title: esc(c.title), sub, back: 'chat', bordered: true, actions: C.ib('models', 'chat-model', 'Choose model') + C.ib('more', 'chat-more', 'Conversation options') })}
+      return `${C.topbar({ title: esc(c.title), sub, back: 'chat', bordered: true, actions: C.go('wave', 'voice-' + c.id, 'Voice conversation') + C.ib('models', 'chat-model', 'Choose model') + C.ib('more', 'chat-more', 'Conversation options') })}
         <div class="scroll"><div class="chat-scroll">${st !== 'loaded' ? `<div class="banner ${st === 'loading' ? 'info' : 'warn'}">${I(st === 'loading' ? 'info' : 'alert')}<span>${st === 'loading' ? 'Loading model into memory…' : 'No model is loaded. Sending will load ' + esc(m.name) + ' first.'}</span></div>` : ''}${msgs}</div></div>
         <div class="composer"><div class="chips scroller">${kbChip}${agentChip}${att}</div>
-          <div class="boxrow"><button class="ibtn" data-action="attach" aria-label="Attach document">${I('attach')}</button><textarea id="composer-input" rows="1" placeholder="${c.agentMode ? 'Describe a task for the agents…' : 'Message'}" aria-label="Message" data-input="grow"></textarea>
+          ${c.pendingPhoto ? `<div class="pending-photo"><img src="${LA.photoSrc(c.pendingPhoto)}" alt="Photo to send"><div class="grow"><b class="small">Photo attached</b><div class="xs faint">Ask about it, or just send.${LA.isVision(c.model || LA.S.activeModel) ? '' : ' Needs a vision model.'}</div></div>${C.ib('close', 'photo-remove', 'Remove photo')}</div>` : ''}
+          <div class="boxrow"><button class="ibtn" data-action="attach" aria-label="Add a photo or document">${I('camera')}</button><textarea id="composer-input" rows="1" placeholder="${dictating ? 'Listening…' : c.agentMode ? 'Describe a task for the agents…' : c.pendingPhoto ? 'Ask about the photo' : 'Message'}" aria-label="Message" data-input="grow"></textarea>
+          ${busy ? '' : `<button class="ibtn mic ${dictating ? 'on' : ''}" data-action="dictate" aria-label="${dictating ? 'Stop dictation' : 'Dictate'}">${I('mic')}</button>`}
           ${busy ? `<button class="sendbtn stop" data-action="stop" aria-label="Stop generating">${I('stop')}</button>` : `<button class="sendbtn" data-action="send" aria-label="Send">${I('send')}</button>`}</div>
           <div class="ctxbar"><span>Context</span>${C.progress(u.used / u.max, u.used / u.max > 0.8 ? 'warn' : 'thin')}<span>${F.num(u.used)} / ${F.ctx(u.max)}</span></div></div>`;
     },
@@ -121,10 +157,18 @@ window.LA = window.LA || {};
     actions: {
       send: (el, ev, id) => {
         const c = LA.conv(id); const ta = document.getElementById('composer-input'); const text = ta.value.trim();
-        if (!text) { ta.focus(); return; }
+        const photo = c.pendingPhoto || null;
+        if (!text && !photo) { ta.focus(); return; }
         if (stream) return;
+        stopDictation();
         if (LA.modelState() === 'unloaded') LA.loadModel(c.model || LA.S.activeModel);
-        c.messages.push({ role: 'user', text }); if (c.title === 'New chat') c.title = text.slice(0, 42) + (text.length > 42 ? '…' : '');
+        c.messages.push(photo ? { role: 'user', text: text || 'What is in this photo? Explain it.', photo } : { role: 'user', text }); c.pendingPhoto = null;
+        if (c.title === 'New chat') c.title = photo ? 'Photo: ' + (LA.PHOTOS[photo] ? LA.PHOTOS[photo].title.toLowerCase() : 'my photo') : text.slice(0, 42) + (text.length > 42 ? '…' : '');
+        if (photo) {
+          const mid = c.model || LA.S.activeModel;
+          if (!LA.isVision(mid)) { c.messages.push({ role: 'ai', noVision: true, model: mid, text: '' }); ta.value = ''; LA.save(); LA.refresh(); toBottom(); return; }
+          c.messages.push({ role: 'ai', text: '' }); startStream(c, c.messages.length - 1, { text: LA.photoAnswer(photo, text) }); ta.value = ''; LA.refresh(); toBottom(); return;
+        }
         c.updated = Date.now();
         if (c.agentMode) {
           c.messages.push({ role: 'ai', workflow: true, live: true, text: '', model: c.model });
@@ -169,6 +213,25 @@ window.LA = window.LA || {};
         });
       },
       attach: (el, ev, id) => {
+        const c = LA.conv(id);
+        LA.photoSheet((p) => { c.pendingPhoto = p; LA.save(); LA.refresh(); }, () => LA.screens.chat.actions['attach-doc'](el, ev, id));
+      },
+      'photo-remove': (el, ev, id) => { const c = LA.conv(id); c.pendingPhoto = null; LA.save(); LA.refresh(); },
+      'use-vision': (el, ev, id) => {
+        const c = LA.conv(id); const vm = LA.model('smolvlm-500m');
+        c.model = vm.id; LA.loadModel(vm.id);
+        const err = c.messages.length - 1; const u = c.messages[err - 1];
+        c.messages[err] = { role: 'ai', text: '' }; LA.refresh(); startStream(c, err, { text: LA.photoAnswer(u.photo, u.text) });
+      },
+      dictate: () => { if (dictating) { stopDictation(); LA.refresh(); return; } startDictation(); },
+      'speak-msg': (el, ev, id) => {
+        const c = LA.conv(id); const i = +el.getAttribute('data-i'); const key = c.id + ':' + i;
+        if (LA.speech.speakingId === key) { LA.speech.stop(); LA.refresh(); return; }
+        LA.speech.speak(c.messages[i].text, key, () => { if (LA.cur().key === 'chat') LA.refresh(); }); LA.refresh();
+        if (!LA.speech.canSpeak()) LA.toast('Reading aloud (simulated: this browser has no speech voice)');
+      },
+      'save-msg': (el, ev, id) => { const c = LA.conv(id); LA.saveAsSheet(c.messages[+el.getAttribute('data-i')].text.replace(/\[chunk:(\d+)\]/g, '[$1]'), c.title); },
+      'attach-doc': (el, ev, id) => {
         const c = LA.conv(id);
         const files = [['Offer letter.pdf', '2.4 MB'], ['Meeting notes.docx', '180 KB'], ['main.kt', '12 KB']];
         LA.sheet({

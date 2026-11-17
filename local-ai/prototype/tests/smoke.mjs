@@ -257,6 +257,115 @@ await step('Light theme renders', async () => {
   await page.click('[data-action=look][data-v=dark]');
 });
 
+await step('Photo: text-only model refuses, switch to SmolVLM, photo is explained', async () => {
+  await go('chat'); await page.click('[data-action=new]'); await page.waitForTimeout(250);
+  await page.evaluate(() => { const c = LA.conv(LA.cur().param); c.model = 'qwen3-4b'; LA.save(); LA.refresh(); });
+  await page.click('[data-action=attach]');
+  assert(await page.locator('.sheet .photo-grid button').count() === 3, 'sample photos offered');
+  await page.click('.sheet [data-action=photo-sample][data-k=bill]');
+  assert(await page.locator('.pending-photo').count() === 1, 'pending photo shown');
+  await page.fill('#composer-input', 'When is this due?');
+  await page.click('[data-action=send]');
+  assert((await page.locator('.msg.ai').last().innerText()).includes("can't see images"), 'no-vision message');
+  await page.click('[data-action=use-vision]');
+  await page.waitForSelector('[data-action=send]', { timeout: 15000 });
+  await page.waitForFunction(() => /28 Nov 2026/.test(document.querySelectorAll('.msg.ai')[document.querySelectorAll('.msg.ai').length - 1].innerText), null, { timeout: 15000 });
+  assert(await page.locator('.msg.user img.photo').count() === 1, 'photo in user bubble');
+  await page.waitForFunction(() => LA.S.modelLoaded, null, { timeout: 5000 });
+  await shot('24-photo-explained');
+});
+
+await step('Photo: Home "Ask a photo" opens a vision chat with the photo attached', async () => {
+  await go('home');
+  await page.click('[data-action=ask-photo]');
+  await page.click('.sheet [data-action=photo-sample][data-k=plant]');
+  await page.waitForTimeout(250);
+  assert(/#chat-/.test(page.url()), 'opened chat');
+  assert(await page.locator('.pending-photo').count() === 1, 'photo waiting to send');
+  assert(await page.evaluate(() => LA.isVision(LA.conv(LA.cur().param).model)), 'vision model chosen');
+  await page.click('[data-action=send]');
+  await page.waitForFunction(() => /fungal/.test(document.querySelector('.msg.ai:last-child') ? document.querySelector('.msg.ai:last-child').innerText : ''), null, { timeout: 15000 });
+});
+
+await step('Voice: dictation types into the composer; read aloud and save as Word', async () => {
+  await go('chat-c-flow');
+  await page.click('[data-action=dictate]');
+  assert(await page.locator('.ibtn.mic.on').count() === 1, 'mic active');
+  await page.waitForFunction(() => document.getElementById('composer-input').value.includes('photo show'), null, { timeout: 5000 });
+  await page.fill('#composer-input', '');
+  await page.locator('[data-action=speak-msg]').last().click();
+  assert(await page.locator('[aria-label="Stop reading"]').count() === 1, 'reading state');
+  await page.locator('[data-action=speak-msg]').last().click();
+  const before = await page.evaluate(() => LA.S.exports.length);
+  await page.locator('[data-action=save-msg]').last().click();
+  await page.click('.sheet [data-action=sv][data-f=docx]');
+  assert(await page.evaluate((n) => LA.S.exports.length === n + 1 && LA.S.exports[0].name.endsWith('.docx'), before), 'docx export added');
+  await page.click('.sheet [data-action=sv-open]');
+  assert(await page.locator('.sheet .paper.docx .page').count() === 1, 'document preview');
+  await page.click('.sheet [data-action=close-sheet]');
+});
+
+await step('Voice conversation: listen → think → speak → transcript saved; tap interrupts', async () => {
+  await go('home'); await page.click('[data-action=talk]');
+  await page.waitForTimeout(200);
+  assert((await text('.v-phase')) === 'Tap to talk', 'idle');
+  await page.click('[data-action=orb]');
+  await page.waitForFunction(() => document.querySelector('.voice').dataset.phase === 'listening');
+  await page.waitForTimeout(700); await shot('25-voice-listening');
+  await page.waitForFunction(() => document.querySelector('.voice').dataset.phase === 'speaking', null, { timeout: 8000 });
+  await page.waitForTimeout(600); await shot('26-voice-speaking');
+  assert((await text('.v-reply')).length > 10, 'reply text streams');
+  // Tap while speaking interrupts and listens again (hands-free may already have started listening).
+  if (await page.evaluate(() => document.querySelector('.voice').dataset.phase === 'speaking')) await page.click('[data-action=orb]');
+  await page.waitForFunction(() => document.querySelector('.voice').dataset.phase === 'listening', null, { timeout: 8000 });
+  await page.click('[data-action=orb]');   // tap while listening stops
+  assert((await text('.v-phase')) === 'Tap to talk', 'back to idle');
+  assert(await page.evaluate(() => LA.S.conversations.some((c) => c.messages.some((m) => m.voice))), 'voice turn saved in a conversation');
+});
+
+await step('Document Studio: write a letter → save PDF; convert Word → PDF with translation', async () => {
+  await go('studio');
+  await page.click('[data-action=st-write]');
+  assert((await page.locator('.toast').innerText()).includes('Describe'), 'validation');
+  await page.fill('#st-req', 'leave from 20 to 22 November for a family function');
+  await page.click('[data-action=st-write]');
+  await page.waitForSelector('[data-action=st-save][data-f=pdf]', { timeout: 15000 });
+  assert((await text('.doc-preview')).includes('family function'), 'draft uses the request');
+  await shot('27-studio-write');
+  await page.click('[data-action=st-save][data-f=pdf]');
+  await page.click('[data-action=st-tab][data-v=convert]');
+  await page.click('[data-action=st-src][data-v=s-offer]');
+  assert(await page.locator('[data-action=st-target][data-v=pdf].on').count() === 1, 'Word defaults to PDF');
+  await page.click('[data-action=st-action][data-v=translate]');
+  await page.fill('#st-tlang', 'Tamil');
+  await page.click('[data-action=st-convert]');
+  await page.waitForSelector('.sheet .paper.pdf', { timeout: 15000 });
+  await shot('28-studio-converted');
+  await page.click('.sheet [data-action=close-sheet]');
+  await page.click('[data-action=st-tab][data-v=files]');
+  const files = await text('.list');
+  assert(files.includes('Offer letter – Tamil.pdf') && files.includes('Leave request.pdf'), 'both exports listed: ' + files.replace(/\n/g, ' | '));
+  await page.locator('[data-action=ex-del]').first().click();
+  await page.click('.sheet [data-action=sheet-ok]');
+  assert(!(await text('.list')).includes('Offer letter – Tamil.pdf'), 'deleted');
+});
+
+await step('Settings: voice language and read-aloud persist', async () => {
+  await go('prefs');
+  await page.selectOption('#s-vlang', 'ta-IN');
+  await page.click('[data-action=vrate][data-v="1.25"]');
+  assert(await page.evaluate(() => LA.S.settings.voiceLang === 'ta-IN' && LA.S.settings.speechRate === 1.25), 'saved');
+  assert((await page.locator('.view').innerText()).includes('No SMS, contacts or call-log access'), 'phone data note');
+});
+
+await step('Launch animation plays and gets out of the way', async () => {
+  await go('home');
+  await page.evaluate(() => LA.splash(1900));
+  assert(await page.locator('.splash').count() === 1, 'splash shown');
+  await page.waitForTimeout(1700); await shot('29-launch-animation');
+  await page.waitForFunction(() => !document.querySelector('.splash'), null, { timeout: 3000 });
+});
+
 await step('No console errors during the session', async () => { assert(!errors.length, errors.slice(0, 3).join(' | ')); });
 
 if (SHOTS) {

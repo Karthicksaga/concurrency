@@ -20,7 +20,7 @@ window.LA = window.LA || {};
     { id: 'qwen3-4b', name: 'Qwen3 4B Instruct', family: 'Qwen3', params: 4.0, quant: 'Q4_K_M', sizeGB: 2.50, arch: 'qwen3', ctxTrain: 32768, layers: 36, kvHeads: 8, headDim: 128, license: 'Apache-2.0', purpose: 'gen', state: 'installed', tags: ['General', 'Multilingual', 'Tool use'], desc: 'Strong all-rounder for its size with reliable JSON output. Recommended default on 8–12 GB devices.' },
     { id: 'llama-3-2-3b', name: 'Llama 3.2 3B Instruct', family: 'Llama', params: 3.2, quant: 'Q4_K_M', sizeGB: 2.02, arch: 'llama', ctxTrain: 131072, layers: 28, kvHeads: 8, headDim: 128, license: 'Llama 3.2 Community License', purpose: 'gen', state: 'installed', tags: ['General', 'Long context'], desc: 'Fast, compact chat model with long context support. Good fit for 8 GB devices.' },
     { id: 'phi-4-mini', name: 'Phi-4-mini Instruct', family: 'Phi', params: 3.8, quant: 'Q4_K_M', sizeGB: 2.49, arch: 'phi3', ctxTrain: 131072, layers: 32, kvHeads: 8, headDim: 128, license: 'MIT', purpose: 'gen', state: 'downloading', tags: ['Reasoning', 'Math'], desc: 'Reasoning-focused small model. Strong on math and structured tasks.' },
-    { id: 'gemma-3-4b', name: 'Gemma 3 4B IT', family: 'Gemma', params: 4.3, quant: 'Q4_0', sizeGB: 2.37, arch: 'gemma3', ctxTrain: 131072, layers: 34, kvHeads: 4, headDim: 256, license: 'Gemma Terms of Use', purpose: 'gen', state: 'downloading', tags: ['General', 'Multilingual'], desc: 'Q4_0 quantisation benefits from ARM weight repacking and the Adreno OpenCL backend.' },
+    { id: 'gemma-3-4b', name: 'Gemma 3 4B IT', family: 'Gemma', params: 4.3, quant: 'Q4_0', sizeGB: 2.37, arch: 'gemma3', ctxTrain: 131072, layers: 34, kvHeads: 4, headDim: 256, license: 'Gemma Terms of Use', purpose: 'gen', state: 'downloading', tags: ['General', 'Multilingual', 'Vision'], vision: true, desc: 'Q4_0 quantisation benefits from ARM weight repacking. Can also look at photos (image encoder included).' },
     { id: 'smollm2-1-7b', name: 'SmolLM2 1.7B Instruct', family: 'SmolLM', params: 1.7, quant: 'Q4_K_M', sizeGB: 1.06, arch: 'llama', ctxTrain: 8192, layers: 24, kvHeads: 32, headDim: 64, license: 'Apache-2.0', purpose: 'gen', state: 'available', tags: ['Lite', 'English'], desc: 'Fully open small model. Runs on 6 GB phones in Lite mode.' },
     { id: 'qwen3-1-7b', name: 'Qwen3 1.7B', family: 'Qwen3', params: 1.7, quant: 'Q4_K_M', sizeGB: 1.03, arch: 'qwen3', ctxTrain: 32768, layers: 28, kvHeads: 8, headDim: 128, license: 'Apache-2.0', purpose: 'gen', state: 'available', tags: ['Lite', 'Multilingual'], desc: 'Recommended for 6 GB phones (Lite mode). Good router/supervisor candidate.' },
     { id: 'qwen2-5-coder-7b', name: 'Qwen2.5 Coder 7B Instruct', family: 'Qwen2.5', params: 7.6, quant: 'Q4_K_M', sizeGB: 4.68, arch: 'qwen2', ctxTrain: 32768, layers: 28, kvHeads: 4, headDim: 128, license: 'Apache-2.0', purpose: 'gen', state: 'available', tags: ['Code'], desc: 'Code-specialised model. Needs a 12 GB device for comfortable use.' },
@@ -28,6 +28,9 @@ window.LA = window.LA || {};
     { id: 'deepseek-r1-qwen-7b', name: 'DeepSeek R1 Distill Qwen 7B', family: 'DeepSeek', params: 7.6, quant: 'Q4_K_M', sizeGB: 4.68, arch: 'qwen2', ctxTrain: 131072, layers: 28, kvHeads: 4, headDim: 128, license: 'MIT', purpose: 'gen', state: 'available', tags: ['Reasoning'], desc: 'Produces long reasoning traces; slower answers, better on hard problems.' },
     { id: 'mistral-7b', name: 'Mistral 7B Instruct v0.3', family: 'Mistral', params: 7.2, quant: 'Q4_K_M', sizeGB: 4.37, arch: 'llama', ctxTrain: 32768, layers: 32, kvHeads: 8, headDim: 128, license: 'Apache-2.0', purpose: 'gen', state: 'available', tags: ['General'], desc: 'Well-known 7B baseline with native function calling format.' },
     { id: 'gemma-3-12b', name: 'Gemma 3 12B IT', family: 'Gemma', params: 12.0, quant: 'Q3_K_M', sizeGB: 6.01, arch: 'gemma3', ctxTrain: 131072, layers: 48, kvHeads: 8, headDim: 256, license: 'Gemma Terms of Use', purpose: 'gen', state: 'available', tags: ['General', 'Large'], desc: 'Largest model in the catalog. Only for 16 GB devices, with short context.' },
+    { id: 'smolvlm-500m', name: 'SmolVLM 500M (vision)', family: 'SmolVLM', params: 0.5, quant: 'Q8_0', sizeGB: 0.55, arch: 'llama', ctxTrain: 8192, layers: 32, kvHeads: 5, headDim: 64, license: 'Apache-2.0', purpose: 'gen', state: 'installed', vision: true, tags: ['Vision', 'Lite'], desc: 'Small vision model: describes photos and reads short text and labels. Fits 4–6 GB phones. Model + image encoder, both checksum-verified.' },
+    { id: 'smolvlm2-2-2b', name: 'SmolVLM2 2.2B (vision)', family: 'SmolVLM', params: 2.2, quant: 'Q4_K_M', sizeGB: 1.70, arch: 'llama', ctxTrain: 8192, layers: 24, kvHeads: 32, headDim: 64, license: 'Apache-2.0', purpose: 'gen', state: 'available', vision: true, tags: ['Vision'], desc: 'Better image understanding and text reading. Best on 8 GB phones.' },
+    { id: 'qwen2-5-vl-3b', name: 'Qwen2.5-VL 3B (vision)', family: 'Qwen2.5', params: 3.75, quant: 'Q4_K_M', sizeGB: 2.77, arch: 'qwen2vl', ctxTrain: 32768, layers: 36, kvHeads: 2, headDim: 128, license: 'Qwen Research License', purpose: 'gen', state: 'available', vision: true, tags: ['Vision', 'Multilingual'], desc: 'Strong at reading documents, receipts and screenshots in photos. Needs a 12 GB phone.' },
     { id: 'me5-small', name: 'multilingual-e5-small', family: 'E5', params: 0.12, quant: 'Q8_0', sizeGB: 0.12, arch: 'bert (XLM-R)', ctxTrain: 512, layers: 12, kvHeads: 12, headDim: 32, license: 'MIT', purpose: 'embed', state: 'installed', dim: 384, tags: ['Embedding', 'Multilingual'], desc: 'Default embedding model for knowledge bases and agent memory (384 dimensions).' },
     { id: 'bge-small-en', name: 'bge-small-en-v1.5', family: 'BGE', params: 0.03, quant: 'F16', sizeGB: 0.07, arch: 'bert', ctxTrain: 512, layers: 12, kvHeads: 12, headDim: 32, license: 'MIT', purpose: 'embed', state: 'available', dim: 384, tags: ['Embedding', 'English'], desc: 'Small English-only embedding model. Fastest indexing.' }
   ];
@@ -128,6 +131,13 @@ window.LA = window.LA || {};
         { role: 'user', text: 'Compare llama.cpp and ExecuTorch for our app and draft a Kotlin interface for the inference engine.' },
         { role: 'ai', model: 'qwen3-4b', workflow: true, text: '**Recommendation:** start with llama.cpp for GGUF breadth and CPU performance; keep ExecuTorch as a later NPU backend [chunk:31].\n\nDraft interface prepared by Forge and reviewed by Critic. Open the workflow to see each agent’s contribution.', sources: [{ n: 31, doc: 'doc-arch', title: 'architecture.md', where: '§ Inference', score: 0.79 }] }
       ] },
+    { id: 'c-photo', title: 'Photo: grocery receipt', model: 'smolvlm-500m', agent: null, kbs: [], updated: ago(18), system: 'You are a helpful assistant running locally on this device. Be concise.', agentMode: false,
+      messages: [
+        { role: 'user', text: 'How much did I spend, and on what?', photo: 'receipt' },
+        { role: 'ai', model: 'smolvlm-500m', tps: 21.4, text: 'This is a **grocery receipt** from Fresh Mart, dated 14 Nov 2026.\n\n- Basmati rice 5 kg — 649\n- Toor dal 1 kg — 172\n- Milk 2 L — 112\n- Tomatoes 1 kg — 46\n\n**Total: 979** (paid by UPI).' },
+        { role: 'user', text: 'Which item was the most expensive?' },
+        { role: 'ai', model: 'smolvlm-500m', tps: 20.8, text: 'The **basmati rice (5 kg) at 649**, about two-thirds of the bill.' }
+      ] },
     { id: 'c-trip', title: 'Packing list for Coorg', model: 'llama-3-2-3b', agent: 'ag-juno', kbs: ['kb-notes'], updated: ago(60 * 30), system: '', agentMode: false,
       messages: [
         { role: 'user', text: 'Make a short packing list for 2 days in Coorg in December.' },
@@ -149,14 +159,20 @@ window.LA = window.LA || {};
     { host: 'catalog.local-ai.app', path: '/v1/catalog.json', bytes: '42 KB', at: ago(60 * 24), why: 'Catalog refresh (signed)' }
   ];
 
+  // Document Studio exports (sample). md holds the document body used for previews.
+  const exportsSeed = [
+    { id: 'ex-leave', name: 'Leave request – 20 to 22 Nov.pdf', fmt: 'pdf', kb: 48, at: ago(60 * 3), md: '# Leave request\n\n**To:** Priya Raman, Engineering Manager  \n**Date:** 17 November 2026\n\nDear Priya,\n\nI would like to request **three days of leave from 20 to 22 November 2026** to attend a family function in Madurai.\n\n## Handover\n- Code reviews: Arjun\n- On-call: swapped with Meena (24–28 Nov)\n\nI will be reachable by phone for anything urgent.\n\nThank you,  \n[Your name]' },
+    { id: 'ex-minutes', name: 'Sprint review minutes.docx', fmt: 'docx', kb: 21, at: ago(60 * 26), md: '# Sprint review — 12 Nov 2026\n\n**Attendees:** Priya, Arjun, Meena, Kiran\n\n## Decisions\n- Ship lite mode for 4 GB phones in 0.2\n- Move OCR to the next sprint\n\n## Action items\n\n| Owner | Action | Due |\n| --- | --- | --- |\n| Arjun | Vision model download sizes | 15 Nov |\n| Meena | Voice settings copy | 18 Nov |' }
+  ];
+
   LA.seed = function () {
     const clone = (x) => JSON.parse(JSON.stringify(x));
     return {
       onboarded: false, look: 'dark', deviceId: '12', activeModel: 'qwen3-4b', modelLoaded: true,
       models: clone(models), downloads: clone(downloads), tools: clone(tools), kbs: clone(kbs), kbExtra: clone(kbExtra),
       documents: clone(documents), agents: clone(agents), memories: clone(memories), conversations: clone(conversations),
-      toolLog: clone(toolLog), networkLog: clone(networkLog),
-      settings: { threads: 'auto', kvType: 'q8_0', gpu: false, wifiOnly: true, memoryApproval: true, indexOnCharge: false, appLock: false },
+      toolLog: clone(toolLog), networkLog: clone(networkLog), exports: clone(exportsSeed),
+      settings: { threads: 'auto', kvType: 'q8_0', gpu: false, wifiOnly: true, memoryApproval: true, indexOnCharge: false, appLock: false, voiceLang: '', speechRate: 1, readAloud: false },
       profiles: {}
     };
   };

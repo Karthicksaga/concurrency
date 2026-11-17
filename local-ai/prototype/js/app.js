@@ -11,12 +11,12 @@ window.LA = window.LA || {};
   LA.load = function () {
     let saved = null;
     try { saved = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { saved = null; }
-    LA.S = saved && saved.v === 5 ? saved.s : LA.seed();
+    LA.S = saved && saved.v === 6 ? saved.s : LA.seed();
   };
   let saveTimer;
   LA.save = function () {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify({ v: 5, s: LA.S })); } catch (e) { /* storage blocked: keep in memory */ } }, 150);
+    saveTimer = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify({ v: 6, s: LA.S })); } catch (e) { /* storage blocked: keep in memory */ } }, 150);
   };
   LA.reset = function () { LA.S = LA.seed(); LA.S.onboarded = true; LA.wf && LA.wf.reset(); LA.save(); LA.applyLook(); LA.go('home'); LA.toast('Demo data restored'); };
   LA.applyLook = function () { document.documentElement.setAttribute('data-look', LA.S.look === 'light' ? 'light' : 'dark'); };
@@ -27,7 +27,7 @@ window.LA = window.LA || {};
     [/^models$/, 'models'], [/^downloads$/, 'downloads'], [/^model-(.+)$/, 'model'],
     [/^agents$/, 'agents'], [/^agent-new$/, 'agentForm'], [/^agent-edit-(.+)$/, 'agentForm'], [/^agent-(.+)$/, 'agent'],
     [/^workflow$/, 'workflow'], [/^knowledge$/, 'knowledge'], [/^kb-new$/, 'kbForm'], [/^kb-(.+)$/, 'kbDetail'], [/^doc-(.+)$/, 'doc'],
-    [/^tools$/, 'tools'], [/^memory$/, 'memory'], [/^memory-(.+)$/, 'memory'], [/^prefs$/, 'prefs'], [/^monitor$/, 'monitor']
+    [/^voice$/, 'voice'], [/^voice-(.+)$/, 'voice'], [/^studio$/, 'studio'], [/^tools$/, 'tools'], [/^memory$/, 'memory'], [/^memory-(.+)$/, 'memory'], [/^prefs$/, 'prefs'], [/^monitor$/, 'monitor']
   ];
   LA.resolve = function (h) {
     for (const [re, key] of ROUTES) { const m = h.match(re); if (m) return { key, param: m[1], hash: h }; }
@@ -120,7 +120,8 @@ window.LA = window.LA || {};
     ['welcome', 'Welcome / Onboarding'], ['home', 'Home dashboard'], ['chat-c-lease', 'AI chat'], ['models', 'Model library'],
     ['model-qwen3-4b', 'Model details'], ['downloads', 'Download progress'], ['agents', 'Agent Studio'], ['agent-new', 'Create agent'],
     ['agent-ag-atlas', 'Agent details'], ['workflow', 'Multi-agent workflow'], ['knowledge', 'Knowledge dashboard'], ['kb-new', 'Create knowledge base'],
-    ['doc-doc-lease', 'Document details'], ['tools', 'Tool registry'], ['memory-ag-juno', 'Agent memory'], ['prefs', 'Settings'], ['monitor', 'Performance monitor']
+    ['doc-doc-lease', 'Document details'], ['tools', 'Tool registry'], ['memory-ag-juno', 'Agent memory'], ['prefs', 'Settings'], ['monitor', 'Performance monitor'],
+    ['chat-c-photo', 'Photo chat (vision)'], ['voice', 'Voice conversation'], ['studio', 'Document Studio']
   ];
   LA.SCREENS = SCREENS;
   function panel() {
@@ -129,6 +130,18 @@ window.LA = window.LA || {};
       <div class="note">Change the simulated device (4 / 6 / 8 / 12 / 16 GB; 4 and 6 GB use Lite mode) in Settings to see compatibility verdicts update.</div></aside>`;
   }
 
+  /* ---------- launch animation: chip assembles, core lights up, status lines while the app warms up ---------- */
+  LA.splash = function (ms) {
+    const dev = document.querySelector('.device'); if (!dev || dev.querySelector('.splash')) return;
+    const el = document.createElement('div'); el.className = 'splash'; el.setAttribute('aria-hidden', 'true');
+    const pins = Array.from({ length: 12 }, (_, i) => `<i style="--i:${i}"></i>`).join('');
+    el.innerHTML = `<div class="sp-chip"><div class="sp-pins">${pins}</div><div class="sp-die"><span class="sp-core"></span></div><div class="sp-orbit">${'<b></b>'.repeat(3)}</div></div>
+      <div class="sp-word">${'LOCAL'.split('').map((c, i) => `<span style="--i:${i}">${c}</span>`).join('')}<em style="--i:5">·</em>${'AI'.split('').map((c, i) => `<span style="--i:${i + 6}">${c}</span>`).join('')}</div>
+      <div class="sp-tag">Private AI, on this phone</div><div class="sp-status"><span>Checking this phone…</span><span>Warming up the model…</span><span>Ready</span></div><div class="sp-bar"><i></i></div>`;
+    dev.appendChild(el);
+    setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 450); }, ms || 2100);
+  };
+
   window.addEventListener('hashchange', () => LA.render());
   window.addEventListener('DOMContentLoaded', () => {
     LA.load(); LA.applyLook();
@@ -136,5 +149,7 @@ window.LA = window.LA || {};
     const clock = () => { const d = new Date(); const el = document.getElementById('sb-time'); if (el) el.textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); };
     clock(); setInterval(clock, 30000);
     LA.render();
+    // Skipped under automation so tests interact immediately; tests call LA.splash() explicitly.
+    if (!navigator.webdriver) LA.splash();
   });
 })();
