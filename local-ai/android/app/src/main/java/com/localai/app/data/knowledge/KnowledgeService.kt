@@ -85,7 +85,7 @@ class KnowledgeService @Inject constructor(
 
     // ---------- documents ----------
 
-    suspend fun addDocument(kbId: String, uri: Uri): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun addDocument(kbId: String, uri: Uri, sourceUri: String? = null, sourceModified: Long? = null): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
             var name = "document"; var size = -1L
             context.contentResolver.query(uri, null, null, null, null)?.use { c ->
@@ -109,7 +109,8 @@ class KnowledgeService @Inject constructor(
             val sha = md.digest().joinToString("") { "%02x".format(it) }
             if (dao.countSha(kbId, sha) > 0) { dest.delete(); throw ExtractionException("$name is already in this knowledge base.") }
             val id = UUID.randomUUID().toString()
-            dao.upsertDoc(DocumentEntity(id, kbId, name, kind.name, dest.length(), null, "QUEUED", 0f, 0, null, dest.absolutePath, sha, System.currentTimeMillis(), null))
+            dao.upsertDoc(DocumentEntity(id, kbId, name, kind.name, dest.length(), null, "QUEUED", 0f, 0, null, dest.absolutePath, sha, System.currentTimeMillis(), null,
+                sourceUri = sourceUri, sourceModified = sourceModified))
             dao.touchKb(kbId, System.currentTimeMillis())
             kick(); id
         }
@@ -130,6 +131,61 @@ class KnowledgeService @Inject constructor(
         val d = dao.doc(docId) ?: return
         File(d.storedPath).delete(); dao.deleteChunks(docId); dao.deleteDoc(docId); invalidate(d.kbId)
     }
+
+    // ---------- linked folders ----------
+
+    data class SyncResult(val added: Int, val updated: Int, val removed: Int, val skipped: Int, val errors: List<String>) {
+        val summary get() = buildString {
+            append("$added added, $updated updated, $removed removed")
+            if (skipped > 0) append(", $skipped unsupported or too large skipped")
+            if (errors.isNotEmpty()) append(". ").append(errors.take(2).joinToString("; "))
+        }
+    }
+
+    /** Links a folder the user picked (Storage Access Framework) and imports its supported files. */
+    suspend fun linkFolder(kbId: String, tree: Uri): SyncResult {
+        runCatching { context.contentResolver.takePersistableUriPermission(tree, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        dao.setSource(kbId, tree.toString(), null)
+        return sync(kbId)
+    }
+
+    suspend fun unlinkFolder(kbId: String) {
+        dao.kb(kbId)?.sourceUri?.let { u -> runCatching { context.contentResolver.releasePersistableUriPermission(Uri.parse(u), android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } }
+        dao.setSource(kbId, null, null)   // documents already imported are kept
+    }
+
+    /** Mirrors the linked folder: imports new files, re-imports changed ones, removes deleted ones. */
+    suspend fun sync(kbId: String): SyncResult = withContext(Dispatchers.IO) {
+        val kb = dao.kb(kbId) ?: return@withContext SyncResult(0, 0, 0, 0, listOf("Knowledge base not found."))
+        val tree = kb.sourceUri?.let { androidx.documentfile.provider.DocumentFile.fromTreeUri(context, Uri.parse(it)) }
+        if (tree == null || !tree.canRead()) return@withContext SyncResult(0, 0, 0, 0, listOf("The linked folder is no longer accessible. Link it again."))
+        val files = ArrayList<androidx.documentfile.provider.DocumentFile>()
+        fun walk(dir: androidx.documentfile.provider.DocumentFile, depth: Int) {
+            if (depth > 4 || files.size >= 500) return
+            dir.listFiles().forEach { f -> if (f.isDirectory) { if (f.name?.startsWith(".") != true) walk(f, depth + 1) } else if (files.size < 500) files += f }
+        }
+        walk(tree, 0)
+        val existing = dao.docsIn(listOf(kbId)).filter { it.sourceUri != null }.associateBy { it.sourceUri!! }
+        var added = 0; var updated = 0; var skipped = 0; val errors = ArrayList<String>()
+        val seen = HashSet<String>()
+        for (f in files) {
+            val name = f.name ?: continue
+            val kind = kindFor(name, f.type)
+            if (kind == null || f.length() > (if (kind == DocKind.PDF) 60L shl 20 else 20L shl 20)) { skipped++; continue }
+            val key = f.uri.toString(); seen += key
+            val old = existing[key]
+            if (old != null && old.sourceModified == f.lastModified()) continue
+            if (old != null) deleteDoc(old.id)
+            addDocument(kbId, f.uri, key, f.lastModified()).onSuccess { if (old == null) added++ else updated++ }
+                .onFailure { e -> if (e.message?.contains("already in this knowledge base") != true) errors += "$name: ${e.message}" }
+        }
+        val removed = existing.filterKeys { it !in seen }.values.onEach { deleteDoc(it.id) }.size
+        dao.setSource(kbId, kb.sourceUri, System.currentTimeMillis())
+        if (added + updated + removed > 0) dao.touchKb(kbId, System.currentTimeMillis())
+        SyncResult(added, updated, removed, skipped, errors)
+    }
+
+    suspend fun syncAll(): Int { var changes = 0; dao.linkedKbs().forEach { r -> val x = sync(r.id); changes += x.added + x.updated + x.removed }; return changes }
 
     // ---------- ingestion worker ----------
 

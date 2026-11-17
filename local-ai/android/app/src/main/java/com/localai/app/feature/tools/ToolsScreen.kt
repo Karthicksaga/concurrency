@@ -77,6 +77,11 @@ fun ToolsScreen(nav: NavController, vm: ToolsViewModel = hiltViewModel()) {
     val folder by vm.folder.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(0) }
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { vm.setFolder(it) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var smsGranted by remember { mutableStateOf(com.localai.app.data.tools.PhoneAccess.canReadSms(ctx)) }
+    var contactsGranted by remember { mutableStateOf(com.localai.app.data.tools.PhoneAccess.canReadContacts(ctx)) }
+    val smsPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { smsGranted = it }
+    val contactsPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { contactsGranted = it }
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -92,7 +97,7 @@ fun ToolsScreen(nav: NavController, vm: ToolsViewModel = hiltViewModel()) {
                 LaCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(t.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        Tag(t.risk.label, when (t.risk) { Risk.READ -> La.colors.knowledge; Risk.WRITE_LOCAL -> La.colors.agent; Risk.DELEGATE -> La.colors.model })
+                        Tag(t.risk.label, when (t.risk) { Risk.READ -> La.colors.knowledge; Risk.WRITE_LOCAL -> La.colors.agent; Risk.PERSONAL -> La.colors.warn; Risk.EXTERNAL -> La.colors.accent; Risk.DELEGATE -> La.colors.model })
                     }
                     Text(t.description, fontSize = 13.sp, color = La.colors.text2)
                     Text("Input: ${t.inputFormat}", fontSize = 12.sp, color = La.colors.text3, fontFamily = La.mono, modifier = Modifier.padding(top = 4.dp))
@@ -100,7 +105,20 @@ fun ToolsScreen(nav: NavController, vm: ToolsViewModel = hiltViewModel()) {
                     Text("Used by ${if (used.isEmpty()) "no agents" else used.joinToString { it.name }}", fontSize = 12.sp, color = La.colors.text3, modifier = Modifier.padding(top = 4.dp))
                     Spacer(Modifier.height(10.dp))
                     if (t.risk != Risk.DELEGATE) SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                        Permission.entries.forEachIndexed { i, p -> SegmentedButton(perms[t.id] == p, { vm.set(t.id, p) }, SegmentedButtonDefaults.itemShape(i, 3)) { Text(p.label) } }
+                        Permission.entries.forEachIndexed { i, p -> SegmentedButton(perms[t.id] == p, {
+                            vm.set(t.id, p)
+                            if (t.id == "sms_reader" && p != Permission.OFF && !smsGranted) smsPerm.launch(android.Manifest.permission.READ_SMS)
+                        }, SegmentedButtonDefaults.itemShape(i, 3)) { Text(p.label) } }
+                    }
+                    if (t.id == "sms_reader") {
+                        Text(if (smsGranted) "SMS permission granted. Messages are read on the phone only." else "Needs SMS permission. Works in this test build; Google Play allows it only for SMS apps.",
+                            fontSize = 12.sp, color = if (smsGranted) La.colors.ok else La.colors.warn, modifier = Modifier.padding(top = 6.dp))
+                        if (!smsGranted) OutlinedButton(onClick = { smsPerm.launch(android.Manifest.permission.READ_SMS) }) { Text("Allow SMS access") }
+                    }
+                    if (t.id == "phone_call") {
+                        Text(if (contactsGranted) "Contacts allowed: you can say “call Amma”." else "Works with numbers. Allow contacts to call people by name.",
+                            fontSize = 12.sp, color = La.colors.text3, modifier = Modifier.padding(top = 6.dp))
+                        if (!contactsGranted) OutlinedButton(onClick = { contactsPerm.launch(android.Manifest.permission.READ_CONTACTS) }) { Text("Allow contacts") }
                     }
                     if (t.id == "file_search") {
                         Spacer(Modifier.height(8.dp))

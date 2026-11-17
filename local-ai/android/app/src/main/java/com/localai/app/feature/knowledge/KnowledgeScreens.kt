@@ -246,6 +246,8 @@ fun KbFormScreen(nav: NavController, vm: KnowledgeViewModel = hiltViewModel()) {
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { files.value = (files.value + it).distinct() }
+    var folder by remember { mutableStateOf<android.net.Uri?>(null) }
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { if (it != null) folder = it }
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -266,7 +268,9 @@ fun KbFormScreen(nav: NavController, vm: KnowledgeViewModel = hiltViewModel()) {
             Text("Sources", fontWeight = FontWeight.Medium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { picker.launch(arrayOf("application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/*", "application/json", "*/*")) }) { Text("Add files") }
+                OutlinedButton(onClick = { folderPicker.launch(null) }) { Text(if (folder == null) "Link a folder" else "Change folder") }
             }
+            folder?.let { Text("Folder: ${it.lastPathSegment?.substringAfterLast(':') ?: it}  · kept in sync (new, changed and deleted files)", fontSize = 13.sp, color = La.colors.knowledge) }
             files.value.forEach { u -> Text("• " + (u.lastPathSegment?.substringAfterLast('/') ?: u.toString()), fontSize = 13.sp, color = La.colors.text2) }
             OutlinedTextField(note, { note = it }, label = { Text("Or write a note") }, minLines = 3, modifier = Modifier.fillMaxWidth())
             Text("PDF (with text), Word .docx, TXT, Markdown and source code. Scanned PDFs need OCR, which is planned for a later release.", fontSize = 11.5.sp, color = La.colors.text3)
@@ -288,7 +292,7 @@ fun KbFormScreen(nav: NavController, vm: KnowledgeViewModel = hiltViewModel()) {
                 name.isBlank() -> "Name the knowledge base."
                 vm.kbs.value.any { it.name.equals(name.trim(), true) } -> "A knowledge base with this name already exists."
                 !shared && owner == null -> "Choose the agent that owns it."
-                files.value.isEmpty() && note.isBlank() -> "Add at least one file or note."
+                files.value.isEmpty() && note.isBlank() && folder == null -> "Add at least one file, a folder or a note."
                 else -> null
             }
             if (error == null) scope.launch {
@@ -297,6 +301,7 @@ fun KbFormScreen(nav: NavController, vm: KnowledgeViewModel = hiltViewModel()) {
                 if (!shared) owner?.let { vm.attachToAgent(it, id) }
                 val errs = files.value.mapNotNull { u -> vm.service.addDocument(id, u).exceptionOrNull()?.message }
                 if (note.isNotBlank()) vm.service.addNote(id, note.lineSequence().first().take(40), note)
+                folder?.let { f -> val r = vm.service.linkFolder(id, f); if (r.errors.isNotEmpty()) error = r.summary }
                 busy = false
                 if (errs.isNotEmpty()) error = errs.joinToString("\n")
                 nav.navigate("kb/$id") { popUpTo("knowledge") }
@@ -321,6 +326,10 @@ class KbDetailViewModel @Inject constructor(savedState: SavedStateHandle, val se
         message = if (errs.isEmpty()) "Added ${uris.size} file${if (uris.size == 1) "" else "s"}. Indexing on this phone…" else errs.joinToString("\n")
     }
     fun reindexAll() = viewModelScope.launch { service.reindexKb(id) }
+    var syncing by mutableStateOf(false)
+    fun link(tree: android.net.Uri) = viewModelScope.launch { syncing = true; message = "Folder linked. " + service.linkFolder(id, tree).summary; syncing = false }
+    fun sync() = viewModelScope.launch { syncing = true; message = "Synced: " + service.sync(id).summary; syncing = false }
+    fun unlink() = viewModelScope.launch { service.unlinkFolder(id); message = "Folder unlinked. Imported documents were kept." }
     fun delete(done: () -> Unit) = viewModelScope.launch {
         agents.all().filter { id in it.kbList }.forEach { agents.save(it.copy(kbIds = (it.kbList - id).joinToString(","))) }
         service.deleteKb(id); done()
@@ -343,6 +352,7 @@ fun KbDetailScreen(nav: NavController, vm: KbDetailViewModel = hiltViewModel()) 
     var q by rememberSaveable { mutableStateOf("") }
     var confirmDelete by remember { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { if (it.isNotEmpty()) vm.add(it) }
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { if (it != null) vm.link(it) }
     val k = (kb ?: return).value ?: run { GoneScreen("This knowledge base was deleted.") { nav.popBackStack() }; return }
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -356,6 +366,21 @@ fun KbDetailScreen(nav: NavController, vm: KbDetailViewModel = hiltViewModel()) 
                 FlowRowSimple {
                     Tag(if (k.scope == "AGENT") "One agent only" else "Shared", La.colors.knowledge)
                     Tag(Catalog.byId(k.embedModelId)?.name ?: k.embedModelId); Tag("${k.chunkSize}/${k.chunkOverlap} tokens")
+                }
+            }
+            item {
+                LaCard(padding = 12) {
+                    if (k.sourceUri == null) {
+                        Text("Keep this knowledge base in sync with a folder on your phone (for example Downloads/Statements).", fontSize = 13.sp, color = La.colors.text2)
+                        OutlinedButton(onClick = { folderPicker.launch(null) }, modifier = Modifier.padding(top = 6.dp)) { Text("Link a folder") }
+                    } else {
+                        Text("Linked folder: ${android.net.Uri.parse(k.sourceUri).lastPathSegment?.substringAfterLast(':') ?: "folder"}", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text(k.lastSyncedAt?.let { "Last synced ${fmtAgo(it)} · syncs every 6 h and before the daily digest" } ?: "Not synced yet", fontSize = 12.sp, color = La.colors.text3)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+                            Button(enabled = !vm.syncing, onClick = { vm.sync() }) { Text(if (vm.syncing) "Syncing…" else "Sync now") }
+                            OutlinedButton(onClick = { vm.unlink() }) { Text("Unlink") }
+                        }
+                    }
                 }
             }
             vm.message?.let { item { Banner(it, Tone.RUN) } }

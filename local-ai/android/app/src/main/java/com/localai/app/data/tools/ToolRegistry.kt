@@ -26,7 +26,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 enum class Permission(val label: String) { ALLOWED("Allow"), ASK("Ask"), OFF("Off") }
-enum class Risk(val label: String) { READ("Read only"), WRITE_LOCAL("Changes local data"), DELEGATE("Delegates to agents") }
+enum class Risk(val label: String) { READ("Read only"), WRITE_LOCAL("Changes local data"), PERSONAL("Reads personal data"), EXTERNAL("Opens another app"), DELEGATE("Delegates to agents") }
 
 /** Static description of a built-in tool. Inputs are one string whose format is described to the model. */
 data class ToolSpec(
@@ -68,6 +68,10 @@ class ToolRegistry @Inject constructor(
             "one SELECT statement on tables note(title, body, createdAt) or document(title, kind, status, sizeBytes)", Risk.READ, Permission.ASK, maxInput = 1000),
         ToolSpec("file_search", "File Search", "Finds files by name in the folder you granted. Returns names, not contents.",
             "part of a file name, e.g. invoice", Risk.READ, Permission.ASK, timeoutMs = 15_000, maxInput = 120),
+        ToolSpec("phone_call", "Phone Dialer", "Opens the phone dialer with a number or contact filled in. You still press Call yourself.",
+            "a phone number, or a contact name (needs contacts permission)", Risk.EXTERNAL, Permission.ASK, maxInput = 80),
+        ToolSpec("sms_reader", "SMS Reader", "Reads recent SMS messages on this phone, read-only, e.g. bank alerts. Nothing is sent anywhere.",
+            "a keyword or sender (or 'all'), optionally followed by 'days N', e.g. 'bank days 7'", Risk.PERSONAL, Permission.OFF, maxInput = 80),
         ToolSpec("delegate_to_agent", "Agent Delegation", "Hands a sub-task to another agent. Used by the supervisor in workflows only.",
             "used internally by workflows", Risk.DELEGATE, Permission.ALLOWED),
     )
@@ -131,6 +135,21 @@ class ToolRegistry @Inject constructor(
         "note_manager" -> notes(input, scope)
         "sqlite_query" -> sql(input)
         "file_search" -> files(input)
+        "phone_call" -> {
+            val digits = input.filter { it.isDigit() || it == '+' }
+            val target = if (digits.length >= 3 && digits.length >= input.count { it.isLetterOrDigit() } / 2) input.trim() to digits
+                else PhoneAccess.findContact(context, input.trim()) ?: throw ToolInputException(
+                    if (PhoneAccess.canReadContacts(context)) "No contact matches \"$input\"." else "Give a phone number, or allow contacts access in Tool registry › Phone Dialer.")
+            withContext(Dispatchers.Main) { PhoneAccess.openDialer(context, target.second) }
+            ToolResult(true, "Opened the dialer for ${target.first} (${target.second}). The user decides whether to call.", "OK")
+        }
+        "sms_reader" -> {
+            if (!PhoneAccess.canReadSms(context)) throw ToolInputException("SMS permission is not granted. Allow it in Tool registry › SMS Reader.")
+            val days = Regex("days?\\s*(\\d+)").find(input.lowercase())?.groupValues?.get(1)?.toIntOrNull()?.coerceIn(1, 31) ?: 3
+            val kw = input.lowercase().replace(Regex("days?\\s*\\d+"), "").trim().takeIf { it.isNotEmpty() && it != "all" }
+            val list = withContext(Dispatchers.IO) { PhoneAccess.readSms(context, System.currentTimeMillis() - days * 86_400_000L, kw, 30) }
+            ToolResult(true, if (list.isEmpty()) "No SMS in the last $days days${kw?.let { " matching \"$it\"" } ?: ""}." else PhoneAccess.format(list), "OK")
+        }
         "delegate_to_agent" -> ToolResult(false, "Delegation is only available inside workflows.", "INVALID")
         else -> ToolResult(false, "Unknown tool.", "INVALID")
     }

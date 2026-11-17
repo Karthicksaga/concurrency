@@ -146,6 +146,8 @@ data class KnowledgeBaseEntity(
     val chunkOverlap: Int,
     val createdAt: Long,
     val updatedAt: Long,
+    val sourceUri: String? = null,     // linked folder (SAF tree) kept in sync
+    val lastSyncedAt: Long? = null,
 )
 
 @Entity(tableName = "document", indices = [Index("kbId")])
@@ -165,6 +167,8 @@ data class DocumentEntity(
     val createdAt: Long,
     val indexedAt: Long?,
     val semantic: Boolean = false, // embeddings stored (otherwise keyword search only)
+    val sourceUri: String? = null,       // file in a linked folder
+    val sourceModified: Long? = null,    // its lastModified at import, to detect changes
 )
 
 @Entity(tableName = "chunk", indices = [Index("docId"), Index("kbId")])
@@ -279,6 +283,9 @@ interface KnowledgeDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertKb(k: KnowledgeBaseEntity)
     @Query("DELETE FROM knowledge_base WHERE id = :id") suspend fun deleteKb(id: String)
     @Query("UPDATE knowledge_base SET updatedAt = :at WHERE id = :id") suspend fun touchKb(id: String, at: Long)
+    @Query("UPDATE knowledge_base SET sourceUri = :uri, lastSyncedAt = :at WHERE id = :id") suspend fun setSource(id: String, uri: String?, at: Long?)
+    @Query("SELECT * FROM knowledge_base WHERE sourceUri IS NOT NULL") suspend fun linkedKbs(): List<KnowledgeBaseEntity>
+    @Query("SELECT * FROM document WHERE createdAt >= :since ORDER BY createdAt DESC") suspend fun docsSince(since: Long): List<DocumentEntity>
 
     @Query("""SELECT kbId, COUNT(*) AS docs, SUM(sizeBytes) AS bytes,
               SUM(CASE WHEN status IN ('QUEUED','EXTRACTING','EMBEDDING') THEN 1 ELSE 0 END) AS indexing,
@@ -323,6 +330,7 @@ interface MemoryDao {
 interface NoteDao {
     @Query("SELECT * FROM note ORDER BY updatedAt DESC") fun observe(): Flow<List<NoteEntity>>
     @Query("SELECT * FROM note ORDER BY updatedAt DESC") suspend fun all(): List<NoteEntity>
+    @Query("SELECT * FROM note WHERE updatedAt >= :since ORDER BY updatedAt DESC") suspend fun since(since: Long): List<NoteEntity>
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(n: NoteEntity)
     @Query("DELETE FROM note WHERE id = :id") suspend fun delete(id: String)
 }
@@ -336,6 +344,7 @@ interface ToolCallDao {
 @Dao
 interface RunDao {
     @Query("SELECT * FROM run ORDER BY startedAt DESC LIMIT 30") fun observeRuns(): Flow<List<RunEntity>>
+    @Query("SELECT * FROM run WHERE startedAt >= :since ORDER BY startedAt DESC") suspend fun runsSince(since: Long): List<RunEntity>
     @Query("SELECT * FROM run WHERE id = :id") fun observeRun(id: String): Flow<RunEntity?>
     @Query("SELECT * FROM run WHERE id = :id") suspend fun run(id: String): RunEntity?
     @Query("SELECT * FROM run_step WHERE runId = :runId ORDER BY ordinal") fun observeSteps(runId: String): Flow<List<RunStepEntity>>
@@ -351,9 +360,9 @@ interface RunDao {
     entities = [InstalledModelEntity::class, ConversationEntity::class, MessageEntity::class,
         AgentEntity::class, KnowledgeBaseEntity::class, DocumentEntity::class, ChunkEntity::class, ChunkFts::class,
         MemoryEntity::class, NoteEntity::class, ToolCallEntity::class, RunEntity::class, RunStepEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun models(): ModelDao

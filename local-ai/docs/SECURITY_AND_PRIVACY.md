@@ -98,7 +98,10 @@ There are no network tools, no shell, no package install, no intent-launching to
 | `POST_NOTIFICATIONS` | Download progress, long workflow runs | When first download starts |
 | `FOREGROUND_SERVICE` + type `dataSync` | Downloads | — |
 | `FOREGROUND_SERVICE` + type for long runs | Workflows while backgrounded | Policy decision pending (see approval questions) |
-| Storage | **Not requested**: SAF pickers only | — |
+| Storage | **Not requested**: SAF pickers and folder links (persisted, read-only) | When linking a folder |
+| `READ_SMS` | Optional SMS Reader tool and daily digest; read-only, on-device (ADR-0013) | When the user enables the tool or "Include SMS" |
+| `READ_CONTACTS` | Optional: call a contact by name via the dialer tool | When the user taps "Allow contacts" |
+| `CALL_PHONE` | **Not requested**: the dialer opens with the number; the user presses Call | — |
 
 ## 7. User control
 

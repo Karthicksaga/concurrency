@@ -32,7 +32,10 @@ The APK is signed with a **public test key** committed in `app/debug-release.key
 | **Knowledge:** knowledge bases (shared or one agent), import PDF/DOCX/TXT/Markdown/code and notes, on-device chunking + embeddings, hybrid search, document details, re-index, notes | ✅ |
 | **Chat with sources:** pick knowledge bases and an agent per chat; answers cite `[n]` with tappable sources; tool calls shown inline | ✅ |
 | **Supervisor workflow:** planner → agent tasks (dependency order, one shared model) → review → aggregate; live graph, retry failed step, cancel, history; also from chat via Agent mode › Supervisor | ✅ |
-| OCR for scanned PDFs, isolated parser process, GPU/NPU | ⏳ Later |
+| **Folder sync:** link a phone folder to a knowledge base; new, changed and deleted files sync every 6 h, on demand and before the digest | ✅ |
+| **Phone tools:** Phone Dialer (opens the dialer, you press Call; contacts by name optional), SMS Reader (read-only, off by default) | ✅ |
+| **Daily digest:** at your chosen time, an on-device summary of SMS, documents, notes and workflows → notification + saved chat + Email button (opens your email app pre-filled) | ✅ |
+| OCR for scanned PDFs, isolated parser process, GPU/NPU, automatic email sending (needs a privacy decision) | ⏳ Later |
 
 ## Lite mode
 

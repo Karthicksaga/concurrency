@@ -73,7 +73,8 @@ fun androidx.navigation.NavController.goTab(route: String) = navigate(route) {
 }
 
 @Composable
-fun AppRoot(vm: RootViewModel = hiltViewModel()) {
+fun AppRoot(openChat: kotlinx.coroutines.flow.MutableStateFlow<String?>, vm: RootViewModel = hiltViewModel()) {
+    val pendingChat by openChat.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val s: AppSettings = settings ?: return   // DataStore not read yet: keep the splash background
     val dark = when (s.theme) { ThemeMode.DARK -> true; ThemeMode.LIGHT -> false; ThemeMode.SYSTEM -> isSystemInDarkTheme() }
@@ -88,6 +89,7 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
         val entry by nav.currentBackStackEntryAsState()
         val route = entry?.destination?.route
         val showBar = route in TABS.map { it.route }
+        LaunchedEffect(pendingChat, s.onboarded) { val id = pendingChat; if (id != null && s.onboarded) { nav.navigate("chat/$id"); openChat.value = null } }
         Scaffold(
             containerColor = La.colors.bg,
             bottomBar = {

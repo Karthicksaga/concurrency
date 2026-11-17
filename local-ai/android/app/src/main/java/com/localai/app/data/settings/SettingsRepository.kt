@@ -36,6 +36,12 @@ data class AppSettings(
     val systemPrompt: String = DEFAULT_SYSTEM_PROMPT,
     val showReasoning: Boolean = false,
     val kvQ8: Boolean = true,
+    val digestEnabled: Boolean = false,
+    val digestHour: Int = 21,
+    val digestMinute: Int = 0,
+    val digestEmail: String = "",
+    val digestIncludeSms: Boolean = true,
+    val folderSync: Boolean = true,
 )
 
 data class ModelProfile(val contextLength: Int, val temperature: Float, val topP: Float)
@@ -69,6 +75,12 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         val system = stringPreferencesKey("system_prompt")
         val reasoning = booleanPreferencesKey("show_reasoning")
         val kvq8 = booleanPreferencesKey("kv_q8")
+        val digestOn = booleanPreferencesKey("digest_on")
+        val digestHour = intPreferencesKey("digest_hour")
+        val digestMinute = intPreferencesKey("digest_minute")
+        val digestEmail = stringPreferencesKey("digest_email")
+        val digestSms = booleanPreferencesKey("digest_sms")
+        val folderSync = booleanPreferencesKey("folder_sync")
         fun ctx(id: String) = intPreferencesKey("ctx_$id")
         fun temp(id: String) = floatPreferencesKey("temp_$id")
         fun topP(id: String) = floatPreferencesKey("topp_$id")
@@ -85,6 +97,12 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
             systemPrompt = p[K.system] ?: DEFAULT_SYSTEM_PROMPT,
             showReasoning = p[K.reasoning] ?: false,
             kvQ8 = p[K.kvq8] ?: true,
+            digestEnabled = p[K.digestOn] ?: false,
+            digestHour = p[K.digestHour] ?: 21,
+            digestMinute = p[K.digestMinute] ?: 0,
+            digestEmail = p[K.digestEmail] ?: "",
+            digestIncludeSms = p[K.digestSms] ?: true,
+            folderSync = p[K.folderSync] ?: true,
         )
     }
 
@@ -100,6 +118,10 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
     suspend fun setSystemPrompt(s: String) = edit { it[K.system] = s }
     suspend fun setShowReasoning(v: Boolean) = edit { it[K.reasoning] = v }
     suspend fun setKvQ8(v: Boolean) = edit { it[K.kvq8] = v }
+    suspend fun setDigest(on: Boolean, hour: Int, minute: Int, email: String, sms: Boolean) = edit {
+        it[K.digestOn] = on; it[K.digestHour] = hour; it[K.digestMinute] = minute; it[K.digestEmail] = email.trim(); it[K.digestSms] = sms
+    }
+    suspend fun setFolderSync(v: Boolean) = edit { it[K.folderSync] = v }
 
     fun profile(id: String, defaultCtx: Int): Flow<ModelProfile> = context.dataStore.data.map { p -> readProfile(p, id, defaultCtx) }
     suspend fun profileNow(id: String, defaultCtx: Int) = readProfile(context.dataStore.data.first(), id, defaultCtx)

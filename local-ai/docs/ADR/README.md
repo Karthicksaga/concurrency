@@ -17,3 +17,4 @@ The blueprint was approved on 2026-11-17: ADRs 0001–0010 are **Accepted**. ADR
 | [0010](0010-isolated-web-prototype.md) | Dependency-free web prototype, isolated from the Android codebase |
 | [0011](0011-lite-mode-and-min-sdk-26.md) | Lite mode for 4 GB / 6 GB phones and minSdk 26 (Accepted) |
 | [0012](0012-milestone-2-4-implementation-choices.md) | Implementation choices for agents, knowledge, tools, memory and workflows (Accepted) |
+| [0013](0013-phone-access-and-daily-digest.md) | Folder sync, phone tools (dialer, SMS) and the daily digest (Accepted) |

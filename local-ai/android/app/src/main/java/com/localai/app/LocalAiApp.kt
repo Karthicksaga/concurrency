@@ -33,7 +33,11 @@ class LocalAiApp : Application() {
     override fun onCreate() {
         super.onCreate()
         getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(CHANNEL_DOWNLOADS, "Model downloads", NotificationManager.IMPORTANCE_LOW))
+            NotificationChannel(CHANNEL_DOWNLOADS, "Model downloads and background work", NotificationManager.IMPORTANCE_LOW))
+        getSystemService(NotificationManager::class.java).createNotificationChannel(
+            NotificationChannel(CHANNEL_DIGEST, "Daily digest", NotificationManager.IMPORTANCE_DEFAULT))
+        // Keep background jobs (folder sync, daily digest) in line with the settings.
+        scope.launch { settings.settings.collect { com.localai.app.data.automation.Automation.schedule(this@LocalAiApp, it) } }
         // Be a good citizen on small phones: release the model soon after the app leaves the screen.
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStop(owner: LifecycleOwner) {
@@ -54,5 +58,5 @@ class LocalAiApp : Application() {
         if (level >= ComponentCallbacks2.TRIM_MEMORY_COMPLETE && !engine.generating.value) scope.launch { engine.unload() }
     }
 
-    companion object { const val CHANNEL_DOWNLOADS = "downloads" }
+    companion object { const val CHANNEL_DOWNLOADS = "downloads"; const val CHANNEL_DIGEST = "digest" }
 }
