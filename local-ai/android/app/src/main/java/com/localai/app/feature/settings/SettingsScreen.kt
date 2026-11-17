@@ -145,12 +145,10 @@ fun SettingsScreen(nav: NavController, vm: SettingsViewModel = hiltViewModel()) 
         SectionHeader("Daily digest")
         LaCard {
             val ctx = androidx.compose.ui.platform.LocalContext.current
-            var smsOk by remember { mutableStateOf(com.localai.app.data.tools.PhoneAccess.canReadSms(ctx)) }
-            val smsPerm = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { smsOk = it }
             var email by remember(settings.digestEmail) { mutableStateOf(settings.digestEmail) }
             fun save(on: Boolean = settings.digestEnabled, h: Int = settings.digestHour, m: Int = settings.digestMinute, e: String = email, sms: Boolean = settings.digestIncludeSms) =
                 vm.set { setDigest(on, h, m, e, sms) }
-            Text("Every day the phone summarises new SMS, documents, notes and workflows with the on-device model. You get a notification with an Email button that opens your email app pre-filled; nothing is sent until you press Send.",
+            Text("Every day the phone summarises new documents, notes and workflows with the on-device model. You get a notification with an Email button that opens your email app pre-filled; nothing is sent until you press Send.",
                 fontSize = 12.5.sp, color = La.colors.text2)
             ToggleRow("Daily digest", "At %02d:%02d every day".format(settings.digestHour, settings.digestMinute), settings.digestEnabled) { save(on = it) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -158,9 +156,6 @@ fun SettingsScreen(nav: NavController, vm: SettingsViewModel = hiltViewModel()) 
                     android.app.TimePickerDialog(ctx, { _, h, m -> save(h = h, m = m) }, settings.digestHour, settings.digestMinute, true).show()
                 }) { Text("Change time") }
                 OutlinedButton(onClick = { com.localai.app.data.automation.Automation.runDigestNow(ctx) }) { Text("Run now") }
-            }
-            ToggleRow("Include SMS", if (smsOk) "Bank alerts, OTP warnings and other messages from the last 24 h" else "Needs SMS permission (read-only)", settings.digestIncludeSms && smsOk) {
-                if (it && !smsOk) smsPerm.launch(android.Manifest.permission.READ_SMS); save(sms = it)
             }
             OutlinedTextField(email, { email = it }, label = { Text("Email address (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             TextButton(onClick = { save() }) { Text("Save address") }

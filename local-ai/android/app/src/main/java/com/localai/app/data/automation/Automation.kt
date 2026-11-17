@@ -30,7 +30,6 @@ import com.localai.app.data.models.ModelRepository
 import com.localai.app.data.settings.AppSettings
 import com.localai.app.data.settings.SettingsRepository
 import com.localai.app.data.settings.policyFor
-import com.localai.app.data.tools.PhoneAccess
 import com.localai.app.runtime.device.DeviceCapabilityService
 import com.localai.app.runtime.inference.ChatTurn
 import com.localai.app.runtime.inference.LlamaEngine
@@ -103,7 +102,7 @@ class FolderSyncWorker(context: Context, params: WorkerParameters) : CoroutineWo
 }
 
 /**
- * Daily digest: summarises the last 24 hours (new SMS if allowed, new documents, notes, workflows) with the
+ * Daily digest: summarises the last 24 hours (new documents, notes, workflows) with the
  * on-device model. Posts a notification, saves the digest as a chat, and offers "Email" which opens the user's
  * email app pre-filled. Nothing is sent without the user pressing Send.
  */
@@ -125,10 +124,6 @@ class DigestWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         runCatching { ep.knowledge().syncAll() }
 
         val sections = ArrayList<String>()
-        if (s.digestIncludeSms && PhoneAccess.canReadSms(applicationContext)) {
-            val sms = PhoneAccess.readSms(applicationContext, since, null, 40)
-            if (sms.isNotEmpty()) sections += "SMS received (${sms.size}):\n" + PhoneAccess.format(sms).take(3500)
-        }
         val docs = ep.kdao().docsSince(since)
         if (docs.isNotEmpty()) sections += "New documents: " + docs.joinToString { it.title }
         val notes = ep.notes().since(since)

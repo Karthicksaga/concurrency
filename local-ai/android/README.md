@@ -33,8 +33,8 @@ The APK is signed with a **public test key** committed in `app/debug-release.key
 | **Chat with sources:** pick knowledge bases and an agent per chat; answers cite `[n]` with tappable sources; tool calls shown inline | ✅ |
 | **Supervisor workflow:** planner → agent tasks (dependency order, one shared model) → review → aggregate; live graph, retry failed step, cancel, history; also from chat via Agent mode › Supervisor | ✅ |
 | **Folder sync:** link a phone folder to a knowledge base; new, changed and deleted files sync every 6 h, on demand and before the digest | ✅ |
-| **Phone tools:** Phone Dialer (opens the dialer, you press Call; contacts by name optional), SMS Reader (read-only, off by default) | ✅ |
-| **Daily digest:** at your chosen time, an on-device summary of SMS, documents, notes and workflows → notification + saved chat + Email button (opens your email app pre-filled) | ✅ |
+| **Phone Dialer tool:** opens the dialer with a number, you press Call. No SMS, contacts or call-log permissions (Play Protect blocks apps that ask for them) | ✅ |
+| **Daily digest:** at your chosen time, an on-device summary of new documents, notes and workflows → notification + saved chat + Email button (opens your email app pre-filled) | ✅ |
 | **Automatic digest email (opt-in):** sends through your own mail server (Gmail/Outlook/Yahoo/Zoho/custom) with an app password stored in the Android Keystore; test email; falls back to the Email button | ✅ |
 | **Photos:** take a photo or pick one in chat ("Ask a photo" on Home) and ask about it; vision models SmolVLM 500M (4–6 GB phones), SmolVLM2 2.2B, Qwen2.5-VL 3B, Gemma 3 4B; image encoder downloaded and verified with the model | ✅ |
 | **Voice:** dictate in chat, read any answer aloud, hands-free voice conversation (listen → answer → speak while writing → listen; tap to interrupt); voice language and speed; on-device speech recognizer when the phone has one | ✅ |

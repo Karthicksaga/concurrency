@@ -28,7 +28,7 @@ object Templates {
             listOf("code_search", "knowledge_search", "calculator"), true,
             "You are a senior software engineer. Prefer small, idiomatic, well-tested code. Reference the files you used. Never claim to have run code.", 0.2f),
         AgentTemplate("assistant", "Personal Assistant", "Assistant", "sparkle", "accent", "Everyday help with notes, plans and quick calculations. Remembers your preferences.",
-            listOf("note_manager", "calculator", "knowledge_search", "phone_call", "sms_reader"), true,
+            listOf("note_manager", "calculator", "knowledge_search", "phone_call"), true,
             "You are a concise, friendly personal assistant. Use what you remember about the user. Ask before creating or changing notes.", 0.7f),
         AgentTemplate("docanalyst", "Document Analyst", "Analyst", "file", "knowledge", "Summarises, compares and extracts facts from long documents.",
             listOf("document_reader", "knowledge_search"), false,

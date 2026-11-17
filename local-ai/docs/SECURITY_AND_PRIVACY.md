@@ -99,8 +99,7 @@ There are no network tools, no shell, no package install, no intent-launching to
 | `FOREGROUND_SERVICE` + type `dataSync` | Downloads | — |
 | `FOREGROUND_SERVICE` + type for long runs | Workflows while backgrounded | Policy decision pending (see approval questions) |
 | Storage | **Not requested**: SAF pickers and folder links (persisted, read-only) | When linking a folder |
-| `READ_SMS` | Optional SMS Reader tool and daily digest; read-only, on-device (ADR-0013) | When the user enables the tool or "Include SMS" |
-| `READ_CONTACTS` | Optional: call a contact by name via the dialer tool | When the user taps "Allow contacts" |
+| `READ_SMS`, `READ_CONTACTS`, call log | **Not requested** (removed 2026-11-17): Google Play Protect blocks sideloaded apps that ask for them (ADR-0013 update) | — |
 | `CALL_PHONE` | **Not requested**: the dialer opens with the number; the user presses Call | — |
 | `RECORD_AUDIO` | Voice dictation and voice conversation (ADR-0015); on-device recognizer preferred | First tap on a microphone |
 | `CAMERA` | **Not requested**: the camera app takes the photo and writes it to a FileProvider URI the app owns | — |
