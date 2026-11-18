@@ -101,6 +101,14 @@ class ModelRepository @Inject constructor(
             .firstOrNull()?.id
     }
 
+    /** The best installed text model (not a vision model) for writing answers, preferring the largest that runs well. */
+    suspend fun installedTextModel(): String? {
+        val dev = device.profile
+        return dao.all().map { it.id }.mapNotNull { Catalog.byId(it) }.filter { it.purpose == "gen" && !it.vision && isInstalled(it.id) }
+            .sortedWith(compareBy<ModelSpec> { MemoryModel.verdict(it, 2048, true, dev, 128) != Verdict.RUNS_WELL }.thenByDescending { it.paramsB })
+            .firstOrNull()?.id
+    }
+
     /** Ensures the active model is loaded; returns its id or an error message. */
     suspend fun ensureLoaded(): Result<String> {
         val st = engine.state.value
