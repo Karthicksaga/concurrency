@@ -84,6 +84,8 @@ class StudioViewModel @Inject constructor(private val studio: DocumentStudio) : 
     var exported by mutableStateOf<File?>(null)
     private var job: Job? = null
     var busy by mutableStateOf(false); private set
+    /** What the app is doing right now, shown with the loading animation. */
+    var busyLabel by mutableStateOf(""); private set
 
     // write
     var kind by mutableStateOf(DocKindChoice.REPORT)
@@ -103,7 +105,7 @@ class StudioViewModel @Inject constructor(private val studio: DocumentStudio) : 
 
     fun write() {
         if (request.isBlank()) { message = "Describe what to write."; return }
-        busy = true; draft = ""; message = null
+        busy = true; draft = ""; message = null; busyLabel = "Writing with the model on your phone…"
         job = viewModelScope.launch {
             try { draft = studio.write(kind, request, length, language) { draft = it } }
             catch (e: CancellationException) { message = "Stopped." }
@@ -118,6 +120,7 @@ class StudioViewModel @Inject constructor(private val studio: DocumentStudio) : 
 
     fun load(uri: Uri) = viewModelScope.launch {
         busy = true; message = null; preview = ""
+        busyLabel = "Opening the file… photos and scanned PDFs are read with text recognition on the phone, which can take up to a minute."
         runCatching { studio.load(uri) }.onSuccess { source = it; target = if (it.name.lowercase().endsWith(".pdf")) DocFormat.DOCX else DocFormat.PDF }
             .onFailure { message = it.message ?: "Could not read that file." }
         busy = false
@@ -126,11 +129,13 @@ class StudioViewModel @Inject constructor(private val studio: DocumentStudio) : 
     fun convert() {
         val doc = source ?: return
         busy = true; message = null; preview = ""; progress = null
+        busyLabel = if (action == AiAction.NONE) "Converting to ${target.label}…" else "${action.label} with the model on your phone…"
         job = viewModelScope.launch {
             try {
                 val blocks: List<Block> = studio.transform(doc.blocks, action, language) { part, parts, text -> progress = part to parts; preview = text }
                 val suffix = when (action) { AiAction.NONE -> ""; AiAction.SUMMARIZE -> " – summary"; AiAction.TRANSLATE -> " – ${language.ifBlank { "translated" }}"; else -> " – edited" }
-                val title = (if (action == AiAction.SUMMARIZE) studio.titleOf(blocks, doc.title) else doc.title) + if (action == AiAction.SUMMARIZE) "" else suffix
+                // Name the result after the original file (headings read from photos can be garbled).
+                val title = doc.name.substringBeforeLast('.').ifBlank { doc.title } + suffix
                 exported = studio.export(blocks, title.trim(), target)
             } catch (e: CancellationException) { message = "Stopped." }
             catch (e: Exception) { message = e.message ?: "Conversion failed." }
@@ -215,7 +220,7 @@ private fun WriteTab(vm: StudioViewModel) {
         else Button(onClick = { vm.write() }, modifier = Modifier.fillMaxWidth()) { Text(if (vm.draft.isBlank()) "Write with AI" else "Write again") }
         Text("Uses the model you loaded. Small models write simpler text; check names, dates and numbers before you send it.", fontSize = 11.5.sp, color = La.colors.text3, modifier = Modifier.padding(top = 6.dp))
     }
-    if (vm.busy && vm.tab == 0 && vm.draft.isBlank()) LinearProgressIndicator(Modifier.fillMaxWidth())
+    if (vm.busy && vm.tab == 0 && vm.draft.isBlank()) LoaderCard(vm.busyLabel)
     if (vm.draft.isNotBlank()) {
         LaCard {
             Text("Preview", fontWeight = FontWeight.SemiBold)
@@ -239,7 +244,7 @@ private fun ConvertTab(vm: StudioViewModel, pick: () -> Unit) {
         Text("1 · Choose a file", fontWeight = FontWeight.SemiBold)
         Text("Word (.docx), PDF (scanned PDFs too), a photo of a page, Markdown or text. Photos and scans are read with on-device text recognition.", fontSize = 12.sp, color = La.colors.text3)
         Spacer(Modifier.height(8.dp))
-        if (src == null) Button(onClick = pick, enabled = !vm.busy) { Text("Choose file") }
+        if (src == null) { if (!vm.busy) Button(onClick = pick) { Text("Choose file") } }
         else Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(src.name, fontWeight = FontWeight.Medium, maxLines = 1)
@@ -248,6 +253,7 @@ private fun ConvertTab(vm: StudioViewModel, pick: () -> Unit) {
             TextButton(onClick = { vm.clearSource() }, enabled = !vm.busy) { Text("Change") }
         }
     }
+    if (src == null && vm.busy) LoaderCard(vm.busyLabel)
     if (src != null) {
         LaCard {
             Text("2 · Convert to", fontWeight = FontWeight.SemiBold)
@@ -261,10 +267,7 @@ private fun ConvertTab(vm: StudioViewModel, pick: () -> Unit) {
             if (vm.busy) OutlinedButton(onClick = { vm.stop() }, Modifier.fillMaxWidth()) { Text("Stop") }
             else Button(onClick = { vm.convert() }, Modifier.fillMaxWidth()) { Text(if (vm.action == AiAction.NONE) "Convert to ${vm.target.label}" else "${vm.action.label} → ${vm.target.label}") }
         }
-        if (vm.busy) {
-            vm.progress?.let { (p, n) -> Text("Part $p of $n", fontSize = 12.5.sp, color = La.colors.text2) }
-            LinearProgressIndicator(Modifier.fillMaxWidth())
-        }
+        if (vm.busy) LoaderCard(vm.busyLabel + (vm.progress?.let { (p, n) -> " Part $p of $n." } ?: ""))
         if (vm.preview.isNotBlank()) LaCard { Text("Live preview", fontWeight = FontWeight.SemiBold); MarkdownText(vm.preview.takeLast(3000)) }
         else if (!vm.busy) LaCard { Text("Preview of the original", fontWeight = FontWeight.SemiBold); MarkdownText(Markdown.render(src.blocks.take(12)).take(2500)) }
     }
@@ -287,5 +290,19 @@ private fun FilesTab(files: List<File>, vm: StudioViewModel, share: (File) -> Un
                 IconButton(onClick = { if (confirm) vm.delete(f) else confirm = true }) { Icon(Icons.Outlined.Delete, if (confirm) "Tap again to delete" else "Delete", tint = if (confirm) La.colors.bad else La.colors.text3) }
             }
         }
+    }
+}
+
+
+/** Loading state with the animated chip, so a slow step never looks like an empty screen. */
+@Composable
+fun LoaderCard(label: String) {
+    LaCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            com.localai.app.core.designsystem.ModelLoadingMark(44.dp)
+            Text(label.ifBlank { "Working…" }, fontSize = 13.5.sp, color = La.colors.text2, modifier = Modifier.padding(start = 12.dp))
+        }
+        Spacer(Modifier.height(10.dp))
+        LinearProgressIndicator(Modifier.fillMaxWidth())
     }
 }

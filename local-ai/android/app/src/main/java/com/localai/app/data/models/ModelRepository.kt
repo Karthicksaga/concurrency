@@ -62,7 +62,8 @@ class ModelRepository @Inject constructor(
     }
 
     /** Loads [id] with the lite-mode policy and the model's saved profile. */
-    suspend fun activate(id: String, allowNotRecommended: Boolean = false): Result<Unit> {
+    /** [persist] = false loads [id] for one message (e.g. a vision model for a photo) without changing the user's active model. */
+    suspend fun activate(id: String, allowNotRecommended: Boolean = false, persist: Boolean = true): Result<Unit> {
         val entity = dao.get(id) ?: return Result.failure(IllegalStateException("Model is not installed yet. Finish the download first."))
         if (Catalog.isEmbedding(id)) return Result.failure(IllegalStateException("${entity.name} is an embedding model for search; choose a chat model."))
         // Catalog spec (with its image encoder) when that encoder is on disk; otherwise the stored text-only spec.
@@ -79,7 +80,7 @@ class ModelRepository @Inject constructor(
         if (verdict == Verdict.NOT_RECOMMENDED && !allowNotRecommended) {
             return Result.failure(IllegalStateException("${spec.name} needs more memory than this phone can safely give it at ${ctx / 1024}K context."))
         }
-        settings.setActiveModel(id)
+        if (persist) settings.setActiveModel(id)
         val loaded = engine.load(id, file, LoadConfig(ctx, policy.threads, policy.defaults.batchSize, s.kvQ8))
         // A failed image encoder leaves a working text model: photos then show a clear "can't see images" error.
         if (loaded.isSuccess && projector != null) engine.loadProjector(fileFor(projector.projectorFile!!), policy.threads)
@@ -88,6 +89,17 @@ class ModelRepository @Inject constructor(
 
     /** Catalog vision model installed without its image encoder (e.g. installed before image support existed). */
     fun missingProjector(id: String): Boolean = Catalog.byId(id)?.projectorFile?.let { !fileFor(it).exists() } ?: false
+
+    /** True when [id] is a vision model whose image encoder is installed. */
+    fun canSee(id: String): Boolean = Catalog.byId(id)?.let { it.vision && !missingProjector(id) } == true
+
+    /** An installed vision model (with its image encoder) to look at photos, preferring the largest that fits. */
+    suspend fun installedVisionModel(): String? {
+        val dev = device.profile
+        return dao.all().map { it.id }.filter { canSee(it) }.mapNotNull { Catalog.byId(it) }
+            .sortedWith(compareBy<ModelSpec> { MemoryModel.verdict(it, 2048, true, dev, 128) != Verdict.RUNS_WELL }.thenByDescending { it.paramsB })
+            .firstOrNull()?.id
+    }
 
     /** Ensures the active model is loaded; returns its id or an error message. */
     suspend fun ensureLoaded(): Result<String> {

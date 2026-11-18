@@ -99,7 +99,7 @@ window.LA = window.LA || {};
     const ex = m.file && !m.streaming && LA.S.exports.find((x) => x.id === m.file);
     const fileChip = ex ? `<div class="pending-photo" style="margin-top:8px">${I('doc')}<div class="grow"><b class="small">${esc(ex.name)}</b><div class="xs faint">Saved on this phone</div></div><button class="btn btn-tonal btn-sm" data-action="open-file" data-id="${ex.id}">Open</button></div>` : '';
     const actions = m.streaming ? '' : `<div class="msg-actions">${C.ib('copy', 'copy-msg', 'Copy response', `data-i="${i}"`)}${C.ib(speaking ? 'stop' : 'volume', 'speak-msg', speaking ? 'Stop reading' : 'Read aloud', `data-i="${i}"${speaking ? ' style="color:var(--accent)"' : ''}`)}${C.ib('doc', 'save-msg', 'Save as PDF or Word', `data-i="${i}"`)}${isLast ? C.ib('refresh', 'regen', 'Regenerate response') : ''}<span class="sim-note" style="margin-left:6px">${I('info', 'icon-sm')}Simulated · ${m.tps || '—'} tok/s</span></div>`;
-    return `<div class="msg ai" data-i="${i}"><div class="who">${ag ? C.avatar(ag, 'sm') : ''}<b>${ag ? esc(ag.name) : esc(model.name)}</b>${m.tool ? `<span class="tag">${I(({ calculator: 'calc', date_time: 'history', scam_check: 'shield', create_document: 'doc' })[m.tool] || 'tool', 'icon-sm')}${({ calculator: 'Calculator', date_time: 'Date & time', scam_check: 'Scam check', create_document: 'Create document' })[m.tool] || m.tool} · used automatically</span>` : ''}</div>${wf}<div class="md">${LA.md(m.text || '')}${m.streaming ? '<span class="cursor"></span>' : ''}${m.stopped ? '<p class="small faint">Generation stopped.</p>' : ''}</div>${fileChip}${sources}${actions}</div>`;
+    return `<div class="msg ai" data-i="${i}"><div class="who">${ag ? C.avatar(ag, 'sm') : ''}<b>${ag ? esc(ag.name) : esc(model.name)}</b>${m.tool ? `<span class="tag">${I(({ calculator: 'calc', date_time: 'history', scam_check: 'shield', create_document: 'doc', ocr: 'eye' })[m.tool] || 'tool', 'icon-sm')}${({ calculator: 'Calculator', date_time: 'Date & time', scam_check: 'Scam check', create_document: 'Create document', ocr: 'Read text in photo' })[m.tool] || m.tool} · used automatically</span>` : ''}</div>${wf}<div class="md">${LA.md(m.text || '')}${m.streaming ? '<span class="cursor"></span>' : ''}${m.stopped ? '<p class="small faint">Generation stopped.</p>' : ''}</div>${fileChip}${sources}${actions}</div>`;
   }
 
   /* Dictation: the browser's speech recognizer when present, otherwise a simulated phrase typed in. */
@@ -189,8 +189,19 @@ window.LA = window.LA || {};
         if (c.title === 'New chat') c.title = photo ? 'Photo: ' + (LA.PHOTOS[photo] ? LA.PHOTOS[photo].title.toLowerCase() : 'my photo') : text.slice(0, 42) + (text.length > 42 ? '…' : '');
         if (photo) {
           const mid = c.model || LA.S.activeModel;
-          if (!LA.isVision(mid)) { c.messages.push({ role: 'ai', noVision: true, model: mid, text: '' }); ta.value = ''; LA.save(); LA.refresh(); toBottom(); return; }
-          c.messages.push({ role: 'ai', text: '' }); startStream(c, c.messages.length - 1, { text: LA.photoAnswer(photo, text) }); ta.value = ''; LA.refresh(); toBottom(); return;
+          // Choose the model for this photo, like the app: text on the photo → the chat model reads it (OCR);
+          // a photo of a thing → an installed vision model for this message; otherwise explain what's missing.
+          const hasText = photo === 'receipt' || photo === 'bill';
+          const vm = LA.S.models.find((x) => x.vision && x.state === 'installed');
+          let useModel = mid; let note = '';
+          if (!LA.isVision(mid)) {
+            if (hasText) note = 'ocr';
+            else if (vm) { useModel = vm.id; note = 'switched'; LA.toast('Switched to ' + esc(vm.name) + ' for this photo'); }
+            else { c.messages.push({ role: 'ai', noVision: true, model: mid, text: '' }); ta.value = ''; LA.save(); LA.refresh(); toBottom(); return; }
+          }
+          c.messages.push({ role: 'ai', text: '' }); const ix = c.messages.length - 1;
+          startStream(c, ix, { text: (note === 'ocr' ? '*Read the text in your photo on the phone.*\n\n' : '') + LA.photoAnswer(photo, text), tool: note === 'ocr' ? 'ocr' : null });
+          c.messages[ix].model = useModel; ta.value = ''; LA.refresh(); toBottom(); return;
         }
         c.updated = Date.now();
         if (c.agentMode) {

@@ -259,21 +259,30 @@ await step('Light theme renders', async () => {
   await page.click('[data-action=look][data-v=dark]');
 });
 
-await step('Photo: text-only model refuses, switch to SmolVLM, photo is explained', async () => {
+await step('Photo: the right model is chosen (text → chat model reads it; a thing → vision model; none → explain)', async () => {
   await go('chat'); await page.click('[data-action=new]'); await page.waitForTimeout(250);
   await page.evaluate(() => { const c = LA.conv(LA.cur().param); c.model = 'qwen3-4b'; LA.save(); LA.refresh(); });
-  await page.click('[data-action=attach]');
-  assert(await page.locator('.sheet .photo-grid button').count() === 3, 'sample photos offered');
-  await page.click('.sheet [data-action=photo-sample][data-k=bill]');
-  assert(await page.locator('.pending-photo').count() === 1, 'pending photo shown');
-  await page.fill('#composer-input', 'When is this due?');
-  await page.click('[data-action=send]');
-  assert((await page.locator('.msg.ai').last().innerText()).includes("can't see images"), 'no-vision message');
-  await page.click('[data-action=use-vision]');
-  await page.waitForSelector('[data-action=stop]', { state: 'detached', timeout: 15000 });
-  await page.waitForFunction(() => /28 Nov 2026/.test(document.querySelectorAll('.msg.ai')[document.querySelectorAll('.msg.ai').length - 1].innerText), null, { timeout: 15000 });
-  assert(await page.locator('.msg.user img.photo').count() === 1, 'photo in user bubble');
-  await page.waitForFunction(() => LA.S.modelLoaded, null, { timeout: 5000 });
+  const send = async (k, q) => {
+    const n = await page.locator('.msg.ai').count();
+    await page.click('[data-action=attach]');
+    if (k === 'bill') assert(await page.locator('.sheet .photo-grid button').count() === 3, 'sample photos offered');
+    await page.click(`.sheet [data-action=photo-sample][data-k=${k}]`);
+    assert(await page.locator('.pending-photo').count() === 1, 'pending photo shown');
+    if (q) await page.fill('#composer-input', q);
+    await page.click('[data-action=send]');
+    await page.waitForFunction((x) => document.querySelectorAll('.msg.ai').length > x && !document.querySelector('[data-action=stop]'), n, { timeout: 15000 });
+    return page.locator('.msg.ai').last().innerText();
+  };
+  const bill = await send('bill', 'When is this due?');
+  assert(/28 Nov 2026/.test(bill) && bill.includes('Read text in photo') && bill.includes('Qwen3 4B'), 'text photo answered by the chat model: ' + bill.slice(0, 80));
+  const plant = await send('plant');
+  assert(/fungal/.test(plant) && await page.evaluate(() => { const c = LA.conv(LA.cur().param); return LA.isVision(c.messages[c.messages.length - 1].model); }), 'photo of a thing → a vision model: ' + plant.slice(0, 80));
+  assert(await page.locator('.msg.user img.photo').count() === 2, 'photos in user bubbles');
+  const visionInstalled = await page.evaluate(() => LA.S.models.filter((m) => m.vision && m.state === 'installed').map((m) => m.id));
+  await page.evaluate((ids) => ids.forEach((id) => { LA.model(id).state = 'available'; }), visionInstalled);
+  const none = await send('plant');
+  assert(none.includes("can't see images"), 'no vision model installed → explains');
+  await page.evaluate((ids) => { ids.forEach((id) => { LA.model(id).state = 'installed'; }); LA.save(); }, visionInstalled);
   await shot('24-photo-explained');
 });
 

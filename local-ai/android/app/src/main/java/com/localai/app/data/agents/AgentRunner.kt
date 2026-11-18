@@ -73,26 +73,33 @@ class AgentRunner @Inject constructor(
     private val kdao: com.localai.app.data.db.KnowledgeDao,
 ) {
     suspend fun run(req: AgentRequest, confirmer: ToolConfirmer, progress: suspend (AgentProgress) -> Unit): AgentResult {
-        // 1. Model: the agent's own model if it has one, otherwise the active model.
-        progress(AgentProgress.Phase("Loading model…"))
-        val agentModel = req.agent?.modelId
-        // An agent's own model is used only if it is installed; otherwise fall back to the active model.
-        val loaded = if (agentModel != null && models.isInstalled(agentModel) && (engine.state.value as? EngineState.Ready)?.modelId != agentModel)
-            models.activate(agentModel).map { agentModel } else models.ensureLoaded()
-        val modelId = loaded.getOrElse { return AgentResult(it.message ?: "The model could not be loaded.", "ERROR", emptyList(), emptyList(), null, null) }
         val s = settings.current()
         val policy = policyFor(s, device.profile)
-        val vision = (engine.state.value as? EngineState.Ready)?.vision == true
-        // Photos: read any text on them first (on-device OCR). Vision models get the image and the text; text-only
-        // models can still answer about documents, bills and screenshots from the text alone.
+        // 1. Photos first: read any text on them (on-device OCR, no model needed). This decides which model fits.
         var photoText: String? = null
         if (req.image != null) {
             progress(AgentProgress.Phase("Reading text in the photo…"))
             val langs = OcrPacks.spec(s.ocrLanguages.split(','), { Ocr.isInstalled(context, it) })
             val ocr = runCatching { Ocr.recognizeFile(context, req.image, langs) }.getOrNull()
             if (ocr?.useful == true) photoText = ocr.text.take(if (policy.lite) 2500 else 6000)
-            if (!vision && photoText == null) return AgentResult(InferenceError.NO_VISION.message, "ERROR", emptyList(), emptyList(), null, modelId)
         }
+        // 2. Model choice. An agent's own model if installed; otherwise the active model. For a photo without readable
+        //    text (a person, a plant, a place) the active model must see images: if it can't, switch to an installed
+        //    vision model for this message only (the active model is kept and comes back on the next text message).
+        val agentModel = req.agent?.modelId?.takeIf { models.isInstalled(it) }
+        val wanted = agentModel ?: s.activeModelId
+        val photoModel = if (req.image != null && photoText == null && wanted != null && !models.canSee(wanted)) models.installedVisionModel() else null
+        progress(AgentProgress.Phase(when {
+            photoModel != null -> "Switching to ${models.specFor(photoModel)?.name?.removeSuffix(" (vision)") ?: "the vision model"} to look at the photo…"
+            else -> "Loading model…"
+        }))
+        val target = photoModel ?: agentModel
+        val loaded = if (target != null && (engine.state.value as? EngineState.Ready)?.modelId != target)
+            models.activate(target, persist = photoModel == null).map { target }
+        else if (target != null) Result.success(target) else models.ensureLoaded()
+        val modelId = loaded.getOrElse { return AgentResult(it.message ?: "The model could not be loaded.", "ERROR", emptyList(), emptyList(), null, null) }
+        val vision = (engine.state.value as? EngineState.Ready)?.vision == true
+        if (req.image != null && !vision && photoText == null) return AgentResult(InferenceError.NO_VISION.message, "ERROR", emptyList(), emptyList(), null, modelId)
         // Smaller images in lite mode: fewer image tokens, less memory and a faster first word.
         val rgb: RgbImage? = if (req.image != null && vision) { progress(AgentProgress.Phase("Looking at the photo…")); Images.toRgb(req.image, if (policy.lite) 512 else 768) } else null
         if (req.image != null && vision && rgb == null) return AgentResult("The photo could not be read. Attach it again.", "ERROR", emptyList(), emptyList(), null, modelId)

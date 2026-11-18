@@ -20,6 +20,11 @@
 - Verified on host (2026-11-17): SmolVLM 500M Q8_0 with its encoder described a newspaper photo correctly (152 prompt tokens including the image); a text turn after an image turn works; malformed image buffers are rejected.
 - Not yet verified: M-RoPE models (Qwen2.5-VL) on the phone. SmolVLM is the recommended choice for lite mode.
 
+**Update (2026-11-18): automatic model choice for photos.** The owner has a chat model and a vision model installed, and expected the right one to answer a photo. Each photo is now read with OCR before any model loads:
+- **Readable text** (bill, letter, screenshot): the active chat model answers from the text. It reasons better than a small vision model.
+- **No readable text** (a person, a plant, a place), and the active model can't see: the best-fitting installed vision model is loaded for that message only (`activate(persist = false)`), and the chat shows "Switching to … to look at the photo".
+- The active model comes back on the next text message. "Can't see images" appears only when no vision model is installed.
+
 ## 2. Voice: Android SpeechRecognizer (on-device first) + TextToSpeech
 
 | Option | Size | Verdict |
