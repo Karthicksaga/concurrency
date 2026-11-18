@@ -8,6 +8,7 @@
 #include <android/log.h>
 #include <android/set_abort_message.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <chrono>
@@ -42,6 +43,7 @@ int                       g_n_batch = 512;
 std::mutex                g_emu;
 llama_model *             g_emodel = nullptr;
 llama_context *           g_ectx   = nullptr;
+int                       g_emax   = 512;     // most tokens per embedded text (the model's position limit)
 
 // Vision projector (mmproj) for multimodal models, bound to g_model.
 mtmd_context *            g_mtmd   = nullptr;
@@ -397,7 +399,11 @@ static jint loadEmbedder_impl(JNIEnv * env, jobject, jstring jpath, jint nThread
     g_emodel = llama_model_load_from_file(path.c_str(), mp);
     if (!g_emodel) return -1;
     llama_context_params cp = llama_context_default_params();
-    cp.n_ctx = 512; cp.n_batch = 512; cp.n_ubatch = 512;
+    // Never past the model's own position table: multilingual-e5-small has 511 positions, not 512, and one
+    // token more fails GGML_ASSERT in get_rows and aborts the app.
+    const int train = llama_model_n_ctx_train(g_emodel);
+    g_emax = std::max(8, std::min(512, train > 0 ? train : 512));
+    cp.n_ctx = g_emax; cp.n_batch = g_emax; cp.n_ubatch = g_emax;
     cp.n_threads = nThreads; cp.n_threads_batch = nThreads;
     cp.embeddings = true;
     g_ectx = llama_init_from_model(g_emodel, cp);
@@ -412,7 +418,7 @@ Java_com_localai_app_runtime_inference_LlamaNative_unloadEmbedder(JNIEnv *, jobj
     if (g_emodel) { llama_model_free(g_emodel); g_emodel = nullptr; }
 }
 
-// Returns one L2-normalised vector per input text (texts are truncated to 512 tokens).
+// Returns one L2-normalised vector per input text (texts are truncated to the model's position limit, at most 512 tokens).
 static jobjectArray embed_impl(JNIEnv * env, jobject, jobjectArray jtexts) {
     std::lock_guard<std::mutex> lock(g_emu);
     if (!g_ectx) return nullptr;
@@ -424,7 +430,7 @@ static jobjectArray embed_impl(JNIEnv * env, jobject, jobjectArray jtexts) {
         auto jt = (jstring) env->GetObjectArrayElement(jtexts, i);
         auto toks = common_tokenize(g_ectx, jstr(env, jt), true, false);
         env->DeleteLocalRef(jt);
-        if (toks.size() > 512) { const auto last = toks.back(); toks.resize(511); toks.push_back(last); }
+        if (static_cast<int>(toks.size()) > g_emax) { const auto last = toks.back(); toks.resize(g_emax - 1); toks.push_back(last); }
         if (toks.empty()) continue;
         if (llama_memory_t m = llama_get_memory(g_ectx)) llama_memory_clear(m, true);
         if (llama_decode(g_ectx, llama_batch_get_one(toks.data(), (int) toks.size())) != 0) { LOGE("embed decode failed"); continue; }

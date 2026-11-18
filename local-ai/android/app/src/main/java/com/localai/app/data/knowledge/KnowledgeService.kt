@@ -197,6 +197,12 @@ class KnowledgeService @Inject constructor(
             try {
                 // Photos queued from a linked folder by 0.1.9 are dropped (folder sync no longer imports photos).
                 dao.pending().filter { it.kind == DocKind.IMAGE.name && it.sourceUri != null }.forEach { deleteDoc(it.id) }
+                // 0.1.17 skipped files that hit the embedding-length crash (fixed in 0.1.18): index them again, once.
+                if (!inProgress.getBoolean("requeued18", false)) {
+                    dao.failed().filter { it.error?.startsWith("LOCAL AI closed while reading") == true }
+                        .forEach { dao.upsertDoc(it.copy(status = "QUEUED", progress = 0f, error = null)) }
+                    inProgress.edit().putBoolean("requeued18", true).commit()
+                }
                 skipFileThatCrashed()
                 while (true) {
                     val next = dao.pending().firstOrNull() ?: break
@@ -218,12 +224,12 @@ class KnowledgeService @Inject constructor(
         val id = inProgress.getString("doc", null) ?: return
         val tries = inProgress.getInt("tries", 0) + 1
         val doc = dao.pending().firstOrNull { it.id == id }
-        if (doc == null) { inProgress.edit().clear().commit(); return }
+        if (doc == null) { inProgress.edit().remove("doc").remove("tries").commit(); return }
         if (com.localai.app.CrashReport.lastExitWasProblem(context) || tries >= 3) {
             dao.deleteChunks(id)
             dao.upsertDoc(doc.copy(status = "FAILED", progress = 0f, error = "LOCAL AI closed while reading this file, so it was skipped. " +
                 "It may be too large or damaged for this phone. Try splitting it, or saving it as a smaller PDF or text file."))
-            inProgress.edit().clear().commit()
+            inProgress.edit().remove("doc").remove("tries").commit()
         } else inProgress.edit().putInt("tries", tries).commit()      // e.g. the app was swiped away: try again
     }
 
@@ -233,7 +239,7 @@ class KnowledgeService @Inject constructor(
         try {
             processInner(d, kb)
         } finally {
-            inProgress.edit().clear().commit()
+            inProgress.edit().remove("doc").remove("tries").commit()
         }
     }
 

@@ -317,6 +317,7 @@ interface KnowledgeDao {
     @Query("SELECT * FROM document WHERE id = :id") suspend fun doc(id: String): DocumentEntity?
     @Query("SELECT * FROM document WHERE kbId IN (:kbIds)") suspend fun docsIn(kbIds: List<String>): List<DocumentEntity>
     @Query("SELECT * FROM document WHERE status IN ('QUEUED','EXTRACTING','EMBEDDING') ORDER BY createdAt") suspend fun pending(): List<DocumentEntity>
+    @Query("SELECT * FROM document WHERE status = 'FAILED'") suspend fun failed(): List<DocumentEntity>
     @Query("SELECT COUNT(*) FROM document WHERE kbId = :kbId AND sha256 = :sha") suspend fun countSha(kbId: String, sha: String): Int
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertDoc(d: DocumentEntity)
     @Query("UPDATE document SET status = :status, progress = :progress WHERE id = :id") suspend fun setStatus(id: String, status: String, progress: Float)
