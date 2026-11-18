@@ -52,6 +52,7 @@ class ToolRegistry @Inject constructor(
     private val kdao: KnowledgeDao,
     private val notes: NoteDao,
     private val log: ToolCallDao,
+    private val calls: com.localai.app.data.phone.CallManager,
 ) {
     val tools = listOf(
         ToolSpec("calculator", "Calculator", "Evaluates arithmetic with a safe parser. No variables, no code.",
@@ -74,8 +75,8 @@ class ToolRegistry @Inject constructor(
             "one SELECT statement on tables note(title, body, createdAt) or document(title, kind, status, sizeBytes)", Risk.READ, Permission.ASK, maxInput = 1000),
         ToolSpec("file_search", "File Search", "Finds files by name in the folder you granted. Returns names, not contents.",
             "part of a file name, e.g. invoice", Risk.READ, Permission.ASK, timeoutMs = 15_000, maxInput = 120),
-        ToolSpec("phone_call", "Phone Dialer", "Opens the phone dialer with a number filled in. You still press Call yourself.",
-            "a phone number, e.g. +91 98765 43210", Risk.EXTERNAL, Permission.ASK, maxInput = 80),
+        ToolSpec("phone_call", "Phone Call", "Calls someone from People (e.g. Amma) or a number, after a 3-second countdown you can cancel.",
+            "a name from People (Amma, Appa…) or a phone number", Risk.EXTERNAL, Permission.ALLOWED, maxInput = 80),
         ToolSpec("delegate_to_agent", "Agent Delegation", "Hands a sub-task to another agent. Used by the supervisor in workflows only.",
             "used internally by workflows", Risk.DELEGATE, Permission.ALLOWED),
     )
@@ -153,14 +154,7 @@ class ToolRegistry @Inject constructor(
         "note_manager" -> notes(input, scope)
         "sqlite_query" -> sql(input)
         "file_search" -> files(input)
-        "phone_call" -> {
-            val digits = input.filter { it.isDigit() || it == '+' }
-            if (digits.length < 3 || digits.length < input.count { it.isLetterOrDigit() } / 2)
-                throw ToolInputException("Give a phone number. LOCAL AI does not read your contacts.")
-            val target = input.trim() to digits
-            withContext(Dispatchers.Main) { PhoneAccess.openDialer(context, target.second) }
-            ToolResult(true, "Opened the dialer for ${target.first} (${target.second}). The user decides whether to call.", "OK")
-        }
+        "phone_call" -> ToolResult(true, calls.call(input), "OK")   // 3-second countdown with Cancel; People or a number
         "delegate_to_agent" -> ToolResult(false, "Delegation is only available inside workflows.", "INVALID")
         else -> ToolResult(false, "Unknown tool.", "INVALID")
     }

@@ -99,7 +99,8 @@ There are no network tools, no shell, no package install, no intent-launching to
 | `FOREGROUND_SERVICE` + type `dataSync` | Downloads | — |
 | `FOREGROUND_SERVICE` + type for long runs | Workflows while backgrounded | Policy decision pending (see approval questions) |
 | Storage | **Not requested**: SAF pickers and folder links (persisted, read-only) | When linking a folder |
-| `READ_SMS`, `READ_CONTACTS`, call log | **Not requested** (removed 2026-11-17): Google Play Protect blocks sideloaded apps that ask for them (ADR-0013 update) | — |
+| `CALL_PHONE` | Optional "Call directly" for "call Amma": the call starts after a 3-second cancellable countdown. Off by default; then the dialer opens and the user presses Call | When the user turns on Settings › People › Call directly |
+| `READ_SMS`, `READ_CONTACTS`, call log | **Not requested** (removed 2026-11-17). People are picked one at a time with the system contact picker, which grants access only to the picked number: Google Play Protect blocks sideloaded apps that ask for them (ADR-0013 update) | — |
 | `CALL_PHONE` | **Not requested**: the dialer opens with the number; the user presses Call | — |
 | `RECORD_AUDIO` | Voice dictation and voice conversation (ADR-0015); on-device recognizer preferred | First tap on a microphone |
 | `CAMERA` | **Not requested**: the camera app takes the photo and writes it to a FileProvider URI the app owns | — |

@@ -42,3 +42,33 @@ class SkillRouterTest {
         assertTrue(one("Check my lease for the notice period", "knowledge_search", kb = true).sure)
     }
 }
+
+class CallCommandTest {
+    private val r = com.localai.app.data.tools.SkillRouter
+    @Test fun findsWhoToCallInFourLanguages() {
+        assertEquals("Amma", r.callTarget("call Amma"))
+        assertEquals("appa", r.callTarget("please call my appa now"))
+        assertEquals("Ravi Kumar", r.callTarget("Can you call Ravi Kumar?"))
+        assertEquals("+91 98765 43210", r.callTarget("dial +91 98765 43210"))
+        assertEquals("amma", r.callTarget("amma ku call pannu"))
+        assertEquals("அம்மா", r.callTarget("அம்மாவுக்கு கால் பண்ணு"))
+        assertEquals("माँ", r.callTarget("माँ को कॉल करो"))
+        assertEquals("phone_call", r.route("call Amma", false).single().tool)
+    }
+
+    @Test fun ordinarySentencesAreNotCalls() {
+        assertEquals(null, r.callTarget("call me back"))
+        assertEquals(null, r.callTarget("Let's call it a day"))
+        assertEquals(null, r.callTarget("What do you call a baby cat?"))
+        assertEquals(null, r.callTarget("call the customer care of my bank about the loan and ask them"))
+    }
+
+    @Test fun familyNamesMatchAcrossLanguages() {
+        val k = com.localai.app.data.phone.Kin
+        assertEquals(k.key("Amma"), k.key("அம்மா"))
+        assertEquals(k.key("amma"), k.key("माँ"))
+        assertEquals(k.key("Mom"), k.key("my mother"))
+        assertEquals(k.key("Appa"), k.key("அப்பா"))
+        assertEquals("ravi", k.key("Ravi"))
+    }
+}

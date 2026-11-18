@@ -455,6 +455,7 @@ await step('Automatic tools: date, scam check and a PDF are picked by the AI its
     return page.locator('.msg.ai').last().innerText();
   };
   assert((await ask("What's the date today?")).includes('Date & time · used automatically'), 'date tool');
+  assert((await ask('call Amma')).includes('Phone call · used automatically'), 'call tool');
   assert((await ask('Dear Customer, your SBI account will be BLOCKED today. Update KYC at http://sbi-kyc-update.xyz')).includes('Scam check · used automatically'), 'scam tool');
   const last = await ask('Write a leave letter for 20-22 Nov and save it as a PDF');
   assert(last.includes('Create document') && /Leave request( \(\d+\))?\.pdf/.test(last), 'document created: ' + last.replace(/\n/g, ' | ').slice(0, 400));

@@ -13,4 +13,9 @@
 
 **Update 2026-11-17: SMS and contacts removed.** On the owner's phone, Google Play Protect blocked installing the APK ("protect your data") because it requested `READ_SMS` and `READ_CONTACTS`. Both permissions, the `sms_reader` tool, contact-name lookup in the dialer and the digest's "Include SMS" option are removed. The dialer tool accepts phone numbers only. Bank statements can still be summarised by linking a folder of PDF statements to a knowledge base (folder sync) or by sharing an SMS into a chat by copy and paste.
 
+**Update 2026-11-18: "call Amma" like a phone assistant.**
+- **Commands:** say or type the request in English, Tanglish, Tamil or Hindi ("call Amma", "amma ku call pannu", "அம்மாவுக்கு கால் பண்ணு", "माँ को कॉल करो"). The skill router recognises it before any model loads, so it's instant.
+- **People:** names are resolved from People. The first time, the app asks "Who is Amma?" and opens the system contact picker. Picking returns one phone row with a temporary read grant, so there is still no `READ_CONTACTS`. Family words match across languages (Amma = அம்மா = माँ = Mom).
+- **Placing the call:** after a 3-second countdown with Cancel and Call now, which also guards against misheard voice commands. The default `ACTION_DIAL` opens the dialer with the number, and the user presses Call. With the optional "Call directly" (`CALL_PHONE`, asked when turned on), `ACTION_CALL` places the call itself.
+
 **Consequences.** Useful personal automation without new network access. Two new runtime permissions (SMS, contacts), both optional. A Play Store release needs the SMS approach revisited.

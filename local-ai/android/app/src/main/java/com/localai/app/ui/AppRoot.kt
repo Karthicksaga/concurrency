@@ -38,6 +38,7 @@ import androidx.navigation.navArgument
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.localai.app.core.designsystem.La
+import com.localai.app.feature.phone.CallOverlay
 import com.localai.app.core.designsystem.LocalAiTheme
 import com.localai.app.data.settings.AppSettings
 import com.localai.app.data.settings.SettingsRepository
@@ -81,6 +82,7 @@ fun AppRoot(openChat: kotlinx.coroutines.flow.MutableStateFlow<String?>, openRou
     var splash by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(true) }
     Box(Modifier.fillMaxSize()) {
         settings?.let { AppContent(openChat, openRoute, it) }
+        if (settings?.onboarded == true) CallOverlay()
         // Last run ended in a crash: offer the local report (shared only if the user chooses).
         val ctx = LocalContext.current
         var crash by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }

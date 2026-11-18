@@ -23,7 +23,21 @@ object SkillRouter {
     private val myDocs = Regex("\\b(in|from|according to|search|check) (my|the) (documents?|files?|pdfs?|notes|knowledge( base)?|lease|policy|statements?)\\b", ci)
     private val question = Regex("^(what|when|where|who|which|how|why|does|do|is|are|can|should|explain|summari[sz]e|find|list|tell me)\\b|\\?\\s*$", ci)
     private val noteWords = Regex("\\b(remember (that|this)|note (this|that|down)|save (a |this )?note|add (a )?note|make a note|my notes|show (my )?notes|list (my )?notes)\\b", ci)
-    private val callWords = Regex("\\b(call|dial|ring|phone)\\s+(\\+?\\d[\\d\\s-]{6,}\\d)", ci)
+    // "call Amma", "please call my appa", "amma ku call pannu", "அம்மாவுக்கு கால் பண்ணு", "माँ को कॉल करो"
+    private val callEn = Regex("^(?:(?:please|pls|can you|could you|hey|ok)\\s+)*(?:call|dial|ring|phone)\\s+(?:to\\s+)?(.{1,40}?)(?:\\s+(?:now|please|pls|right now))?[.!?]*$", ci)
+    private val callTanglish = Regex("^(?:my\\s+)?(.{1,30}?)\\s*(?:ku|kku|kitta)?\\s+(?:call|phone)\\s+(?:pannu|panu|pannunga|podu|pottu|panni)\\b.*$", ci)
+    private val callTamil = Regex("^(.{1,30}?)(?:வுக்கு|க்கு|கு)?\\s*(?:கால்|போன்)\\s*(?:பண்ணு|பண்ணுங்க|செய்|போடு)")
+    private val callHindi = Regex("^(.{1,30}?)\\s+को\\s+(?:कॉल|फ़ोन|फोन)\\s+(?:करो|कीजिए|करें|लगाओ)")
+    private val notPeople = setOf("me", "it", "this", "that", "back", "him", "her", "them", "us", "you", "me back", "it a day")
+
+    /** The person or number in a "call …" command, or null. */
+    fun callTarget(text: String): String? {
+        val t = text.trim()
+        val m = callEn.find(t) ?: callTanglish.find(t) ?: callTamil.find(t) ?: callHindi.find(t) ?: return null
+        val who = m.groupValues[1].trim().removePrefix("my ").trim()
+        if (who.isEmpty() || who.lowercase() in notPeople || who.split(Regex("\\s+")).size > 4) return null
+        return who
+    }
 
     fun route(text: String, hasKnowledge: Boolean): List<SkillCandidate> {
         val t = text.trim()
@@ -55,7 +69,7 @@ object SkillRouter {
             out += SkillCandidate("create_document", fmt, sure = true)
         }
 
-        callWords.find(t)?.let { m -> out += SkillCandidate("phone_call", m.groupValues[2].trim(), sure = true) }
+        callTarget(t)?.let { who -> out += SkillCandidate("phone_call", who, sure = true) }
 
         if (noteWords.containsMatchIn(t)) out += SkillCandidate("note_manager", null, sure = false)
 

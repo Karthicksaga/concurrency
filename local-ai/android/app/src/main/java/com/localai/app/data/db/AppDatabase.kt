@@ -53,6 +53,23 @@ data class ConversationEntity(
     @ColumnInfo(defaultValue = "0") val pinned: Boolean = false,
 )
 
+/** Someone the user calls by name ("Amma"): picked once from contacts, stored only in the app. */
+@Entity(tableName = "person")
+data class PersonEntity(
+    @PrimaryKey val alias: String,          // as the user says it, e.g. "Amma"
+    val displayName: String,                // the contact's name
+    val number: String,
+    val createdAt: Long,
+)
+
+@Dao
+interface PeopleDao {
+    @Query("SELECT * FROM person ORDER BY alias") fun observe(): Flow<List<PersonEntity>>
+    @Query("SELECT * FROM person") suspend fun all(): List<PersonEntity>
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(p: PersonEntity)
+    @Query("DELETE FROM person WHERE alias = :alias") suspend fun delete(alias: String)
+}
+
 @Entity(tableName = "message")
 data class MessageEntity(
     @PrimaryKey val id: String,
@@ -363,10 +380,10 @@ interface RunDao {
 @Database(
     entities = [InstalledModelEntity::class, ConversationEntity::class, MessageEntity::class,
         AgentEntity::class, KnowledgeBaseEntity::class, DocumentEntity::class, ChunkEntity::class, ChunkFts::class,
-        MemoryEntity::class, NoteEntity::class, ToolCallEntity::class, RunEntity::class, RunStepEntity::class],
-    version = 5,
+        MemoryEntity::class, NoteEntity::class, ToolCallEntity::class, RunEntity::class, RunStepEntity::class, PersonEntity::class],
+    version = 6,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6)],
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun models(): ModelDao
@@ -377,4 +394,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun notes(): NoteDao
     abstract fun toolCalls(): ToolCallDao
     abstract fun runs(): RunDao
+    abstract fun people(): PeopleDao
 }

@@ -96,6 +96,7 @@ class VoiceViewModel @Inject constructor(
     private val output: SpeechOutput,
     private val settings: SettingsRepository,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
+    private val calls: com.localai.app.data.phone.CallManager,
 ) : ViewModel() {
     /** Talk over the assistant to interrupt it (barge-in), like a phone call. */
     private val monitor = com.localai.app.data.voice.BargeInMonitor()
@@ -220,7 +221,10 @@ class VoiceViewModel @Inject constructor(
                 rest.forEach { speak(it, s.voiceLanguage, s.speechRate) }
             }
             if (phase == VoicePhase.THINKING && !output.speaking.value) { phase = VoicePhase.IDLE; stopMonitor() }
-            output.onIdle { if (active && phase == VoicePhase.SPEAKING) { stopMonitor(); if (handsFree) listen() else phase = VoicePhase.IDLE } }
+            // A call is starting (or we asked who someone is): stop the listening loop so the mic is free.
+            val calling = { calls.pending.value != null || calls.askWho.value != null }
+            if (calling()) stopMonitor()
+            output.onIdle { if (active && phase == VoicePhase.SPEAKING) { stopMonitor(); if (handsFree && !calling()) listen() else phase = VoicePhase.IDLE } }
         }
     }
 

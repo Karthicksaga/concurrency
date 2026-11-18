@@ -13,6 +13,10 @@
          on-device speech recognition (docs/ADR/0015-voice-vision-documents.md). No CAMERA permission: photos are
          taken by the camera app through ACTION_IMAGE_CAPTURE and written to a FileProvider URI we own. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Optional: "call Amma" places the call itself after a 3-second countdown. Asked only when the user turns on
+         Settings › People › Call directly; otherwise the dialer opens with the number ready. -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
 
     <queries>
         <intent><action android:name="android.speech.RecognitionService" /></intent>

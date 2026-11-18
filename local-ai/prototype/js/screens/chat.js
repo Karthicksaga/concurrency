@@ -19,6 +19,12 @@ window.LA = window.LA || {};
     const recent = c.messages.filter((m) => m.role === 'user').slice(-2).find((m) => m.photo);
     // Automatic tools (no agent selected): the same skills the app routes to on the phone.
     if (!c.agent && !c.agentMode && LA.S.settings.autoTools !== false) {
+      const call = text.match(/^(?:(?:please|can you|hey)\s+)*(?:call|dial|ring|phone)\s+(?:my\s+)?(.{1,30}?)[.!?]*$/i) || text.match(/^(.{1,30}?)\s*(?:ku|kku)?\s+call\s+pannu/i) || text.match(/^(.{1,30}?)(?:வுக்கு|க்கு|கு)?\s*கால்\s*பண்ணு/);
+      if (call && !/^(me|it|me back)$/i.test(call[1].trim())) {
+        const who = call[1].trim(); const name = who.charAt(0).toUpperCase() + who.slice(1);
+        setTimeout(() => LA.toast('Calling ' + esc(name) + ' in 3… <b>Cancel</b> (simulated: the app places the call after the countdown)'), 300);
+        return { tool: 'phone_call', text: 'Calling ' + name + '…' };
+      }
       if (/\b(what('?s| is) (the )?(date|day|time)|today'?s date|what day is)\b/i.test(text)) {
         const d = new Date(); return { tool: 'date_time', text: 'Today is **' + d.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) + '**, and it is ' + d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) + ' on this phone.' };
       }
@@ -99,7 +105,7 @@ window.LA = window.LA || {};
     const ex = m.file && !m.streaming && LA.S.exports.find((x) => x.id === m.file);
     const fileChip = ex ? `<div class="pending-photo" style="margin-top:8px">${I('doc')}<div class="grow"><b class="small">${esc(ex.name)}</b><div class="xs faint">Saved on this phone</div></div><button class="btn btn-tonal btn-sm" data-action="open-file" data-id="${ex.id}">Open</button></div>` : '';
     const actions = m.streaming ? '' : `<div class="msg-actions">${C.ib('copy', 'copy-msg', 'Copy response', `data-i="${i}"`)}${C.ib(speaking ? 'stop' : 'volume', 'speak-msg', speaking ? 'Stop reading' : 'Read aloud', `data-i="${i}"${speaking ? ' style="color:var(--accent)"' : ''}`)}${C.ib('doc', 'save-msg', 'Save as PDF or Word', `data-i="${i}"`)}${isLast ? C.ib('refresh', 'regen', 'Regenerate response') : ''}<span class="sim-note" style="margin-left:6px">${I('info', 'icon-sm')}Simulated · ${m.tps || '—'} tok/s</span></div>`;
-    return `<div class="msg ai" data-i="${i}"><div class="who">${ag ? C.avatar(ag, 'sm') : ''}<b>${ag ? esc(ag.name) : esc(model.name)}</b>${m.tool ? `<span class="tag">${I(({ calculator: 'calc', date_time: 'history', scam_check: 'shield', create_document: 'doc', ocr: 'eye' })[m.tool] || 'tool', 'icon-sm')}${({ calculator: 'Calculator', date_time: 'Date & time', scam_check: 'Scam check', create_document: 'Create document', ocr: 'Read text in photo' })[m.tool] || m.tool} · used automatically</span>` : ''}</div>${wf}<div class="md">${LA.md(m.text || '')}${m.streaming ? '<span class="cursor"></span>' : ''}${m.stopped ? '<p class="small faint">Generation stopped.</p>' : ''}</div>${fileChip}${sources}${actions}</div>`;
+    return `<div class="msg ai" data-i="${i}"><div class="who">${ag ? C.avatar(ag, 'sm') : ''}<b>${ag ? esc(ag.name) : esc(model.name)}</b>${m.tool ? `<span class="tag">${I(({ calculator: 'calc', date_time: 'history', scam_check: 'shield', create_document: 'doc', ocr: 'eye', phone_call: 'signal' })[m.tool] || 'tool', 'icon-sm')}${({ calculator: 'Calculator', date_time: 'Date & time', scam_check: 'Scam check', create_document: 'Create document', ocr: 'Read text in photo', phone_call: 'Phone call' })[m.tool] || m.tool} · used automatically</span>` : ''}</div>${wf}<div class="md">${LA.md(m.text || '')}${m.streaming ? '<span class="cursor"></span>' : ''}${m.stopped ? '<p class="small faint">Generation stopped.</p>' : ''}</div>${fileChip}${sources}${actions}</div>`;
   }
 
   /* Dictation: the browser's speech recognizer when present, otherwise a simulated phrase typed in. */

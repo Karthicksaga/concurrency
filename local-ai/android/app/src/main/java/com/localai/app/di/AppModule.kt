@@ -23,6 +23,7 @@ object AppModule {
     @Provides fun knowledgeDao(db: AppDatabase) = db.knowledge()
     @Provides fun memoryDao(db: AppDatabase) = db.memory()
     @Provides fun noteDao(db: AppDatabase) = db.notes()
+    @Provides fun peopleDao(db: AppDatabase) = db.people()
     @Provides fun toolCallDao(db: AppDatabase) = db.toolCalls()
     @Provides fun runDao(db: AppDatabase) = db.runs()
 }

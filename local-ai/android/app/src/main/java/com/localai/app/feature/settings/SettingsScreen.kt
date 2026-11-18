@@ -67,7 +67,15 @@ class SettingsViewModel @Inject constructor(
     val email: com.localai.app.data.email.EmailService,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
     private val speech: com.localai.app.data.voice.SpeechOutput,
+    val calls: com.localai.app.data.phone.CallManager,
+    private val peopleDao: com.localai.app.data.db.PeopleDao,
 ) : ViewModel() {
+    // ---- People ("call Amma") ----
+    val people = peopleDao.observe().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    var callDirect by androidx.compose.runtime.mutableStateOf(calls.callDirectly && calls.canCallDirectly)
+    fun applyCallDirect(on: Boolean) { calls.callDirectly = on; callDirect = on && calls.canCallDirectly }
+    fun addPerson(alias: String, uri: android.net.Uri) = viewModelScope.launch { calls.savePicked(alias, uri, thenCall = false) }
+    fun removePerson(alias: String) = viewModelScope.launch { peopleDao.delete(alias) }
     // ---- natural voices ----
     val voiceProgress = androidx.compose.runtime.mutableStateMapOf<String, Float>()
     var voiceVersion by androidx.compose.runtime.mutableIntStateOf(0); private set
@@ -228,6 +236,33 @@ fun SettingsScreen(nav: NavController, vm: SettingsViewModel = hiltViewModel()) 
             ToggleRow("Read replies aloud", "Speak every answer in chat (you can also tap the speaker under any answer).", settings.readAloud) { v -> vm.set { setVoice(settings.voiceLanguage, settings.speechRate, v) } }
             val ctx = androidx.compose.ui.platform.LocalContext.current
             TextButton(onClick = { runCatching { ctx.startActivity(android.content.Intent("com.android.settings.TTS_SETTINGS").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) } }) { Text("Text-to-speech settings") }
+        }
+
+        SectionHeader("People")
+        LaCard {
+            val people by vm.people.collectAsStateWithLifecycle()
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            var alias by remember { mutableStateOf("") }
+            val picker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { res ->
+                val uri = res.data?.data
+                if (res.resultCode == android.app.Activity.RESULT_OK && uri != null && alias.isNotBlank()) { vm.addPerson(alias, uri); alias = "" }
+            }
+            val callPerm = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { granted -> vm.applyCallDirect(granted) }
+            Text("Say \"call Amma\" in chat or voice mode. Each person is picked once from your contacts; LOCAL AI only sees the contacts you pick. Calls start after a 3-second countdown you can cancel.",
+                fontSize = 12.5.sp, color = La.colors.text2)
+            people.forEach { p ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) { Text(p.alias, fontSize = 14.sp, fontWeight = FontWeight.Medium); Text("${p.displayName} · ${p.number}", fontSize = 12.sp, color = La.colors.text3) }
+                    TextButton(onClick = { vm.removePerson(p.alias) }) { Text("Remove", color = La.colors.text3) }
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(alias, { alias = it }, Modifier.weight(1f), singleLine = true, label = { Text("Name you say (e.g. Amma)") })
+                TextButton(enabled = alias.isNotBlank(), onClick = { runCatching { picker.launch(vm.calls.pickIntent()) } }) { Text("Pick contact") }
+            }
+            ToggleRow("Call directly", if (vm.callDirect) "Places the call after the countdown" else "Off: the dialer opens with the number ready; you press Call", vm.callDirect) { on ->
+                if (on && !vm.calls.canCallDirectly) { vm.calls.callDirectly = true; callPerm.launch(android.Manifest.permission.CALL_PHONE) } else vm.applyCallDirect(on)
+            }
         }
 
         SectionHeader("Text recognition")

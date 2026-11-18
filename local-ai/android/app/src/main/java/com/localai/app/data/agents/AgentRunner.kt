@@ -75,6 +75,20 @@ class AgentRunner @Inject constructor(
     suspend fun run(req: AgentRequest, confirmer: ToolConfirmer, progress: suspend (AgentProgress) -> Unit): AgentResult {
         val s = settings.current()
         val policy = policyFor(s, device.profile)
+        // 0. "Call Amma": act at once, without loading a model (the call has its own countdown and Cancel).
+        if (req.agent == null && req.image == null && s.autoTools && req.allowTools) {
+            val last = req.history.lastOrNull { it.role == "user" }?.content.orEmpty()
+            val who = com.localai.app.data.tools.SkillRouter.callTarget(last)
+            if (who != null && tools.permissions.first()["phone_call"] != Permission.OFF) {
+                val r = tools.execute("phone_call", who, ToolScope(null, emptyList()))
+                val text = when {
+                    r.output.startsWith("Calling") -> r.output.substringBefore(" (") .let { if (it.endsWith(".")) it else "$it…" }
+                    r.output.startsWith("Asked") -> "Who is $who? Choose them from your contacts once, and next time I'll call right away."
+                    else -> r.output
+                }
+                return AgentResult(text, "COMPLETE", emptyList(), listOf(ToolTrace("phone_call", who, r.output, r.status)), null, null)
+            }
+        }
         // 1. Photos first: read any text on them (on-device OCR, no model needed). This decides which model fits.
         var photoText: String? = null
         if (req.image != null) {
