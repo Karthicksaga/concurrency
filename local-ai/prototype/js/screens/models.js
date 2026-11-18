@@ -36,7 +36,7 @@ window.LA = window.LA || {};
   function actionBtn(m, small) {
     const d = dlFor(m); const sz = small ? 'btn-sm' : '';
     if (m.state === 'installed') return m.id === LA.S.activeModel ? `<span class="status ok">Active</span>` : m.purpose === 'embed' ? `<span class="status pending">Installed</span>` : `<button class="btn btn-tonal ${sz}" data-action="activate" data-id="${m.id}">Use</button>`;
-    if (d) return `<button class="btn btn-outline ${sz}" data-go="downloads" data-dlt="${d.id}">${d.state === 'paused' ? 'Paused' : d.state === 'verifying' ? 'Verifying' : Math.round(d.progress * 100) + '%'}</button>`;
+    if (d) return `<button class="btn btn-outline ${sz}" data-go="dl-progress" data-dlt="${d.id}">${d.state === 'paused' ? 'Paused' : d.state === 'verifying' ? 'Verifying' : Math.round(d.progress * 100) + '%'}</button>`;
     return `<button class="btn btn-primary ${sz}" data-action="download" data-id="${m.id}" aria-label="Download ${esc(m.name)}">${I('download')}${F.size(m.sizeGB)}</button>`;
   }
   LA.modelCard = function (m) {
@@ -61,7 +61,7 @@ window.LA = window.LA || {};
     render() {
       const n = LA.S.downloads.filter((d) => ['running', 'paused', 'verifying'].includes(d.state)).length;
       const list = filtered(); const d = LA.device();
-      return `${C.topbar({ title: 'Models', sub: `${d.label} · ≈${LA.usableGB(d).toFixed(1)} GB model budget`, actions: C.go('download', 'downloads', 'Downloads', n || '') + C.ib('upload', 'import', 'Import GGUF file') })}
+      return `${C.topbar({ title: 'Models', sub: `${d.label} · ≈${LA.usableGB(d).toFixed(1)} GB model budget`, actions: C.go('download', 'dl-progress', 'Downloads', n || '') + C.ib('upload', 'import', 'Import GGUF file') })}
       <div class="scroll"><div class="body">
         ${d.lite ? `<div class="banner info">${I('info')}<span><b>Lite mode</b> · ${d.label}. Showing small models first, with a 2K context to save memory.</span></div>` : ''}
         <div class="search">${I('search')}<input id="model-search" placeholder="Search models" value="${esc(q)}" data-input="mq" aria-label="Search models"></div>
@@ -174,7 +174,7 @@ window.LA = window.LA || {};
         ${m.state === 'installed' && m.purpose === 'gen' ? `<div class="card"><div class="row between"><b>On-device benchmark</b>${C.sample('Simulated')}</div>${bench && bench.id === m.id ? `<div class="stats" style="margin-top:12px">${[['Prompt', bench.p + ' tok/s'], ['Generate', bench.g + ' tok/s'], ['Peak RAM', bench.r + ' GB']].map(([k, x]) => `<div class="stat"><div class="k">${k}</div><div class="v">${x}</div></div>`).join('')}</div>` : `<p class="small muted" style="margin:8px 0 12px">Runs a 128-token prompt and 64-token generation to measure real speed on this phone.</p><button class="btn btn-outline btn-sm" data-action="bench">${I('bolt', 'icon-sm')}Run benchmark</button>`}</div>` : ''}
         <details class="disclosure card"><summary>Chat template<span class="chev">${I('down', 'icon-sm')}</span></summary><pre class="json" style="margin-top:10px">${esc(m.arch.startsWith('qwen') ? '<|im_start|>system\n{system}<|im_end|>\n<|im_start|>user\n{message}<|im_end|>\n<|im_start|>assistant' : m.arch === 'gemma3' ? '<start_of_turn>user\n{system}\n\n{message}<end_of_turn>\n<start_of_turn>model' : m.arch === 'phi3' ? '<|system|>{system}<|end|><|user|>{message}<|end|><|assistant|>' : '<|start_header_id|>system<|end_header_id|>\n{system}<|eot_id|><|start_header_id|>user<|end_header_id|>\n{message}<|eot_id|>')}</pre><p class="xs faint" style="margin:8px 0 0">Read from GGUF metadata at load time.</p></details>
       </div></div>
-      <div class="composer" style="flex-direction:row;gap:10px">${m.state === 'installed' ? (m.purpose === 'embed' ? `<button class="btn btn-outline btn-block" data-go="knowledge">Used by knowledge bases</button>` : isActive ? `<button class="btn btn-outline grow" data-action="unload">${LA.modelState() === 'loaded' ? 'Unload' : 'Load'}</button><button class="btn btn-primary grow" data-action="chat">${I('chat', 'icon-sm')}Chat</button>` : `<button class="btn btn-primary btn-block" data-action="activate">Set as active model</button>`) : dl ? `<button class="btn btn-outline btn-block" data-go="downloads">View download · ${Math.round(dl.progress * 100)}%</button>` : `<button class="btn btn-primary btn-block" data-action="download">${I('download')}Download ${F.size(m.sizeGB)}</button>`}</div>`;
+      <div class="composer" style="flex-direction:row;gap:10px">${m.state === 'installed' ? (m.purpose === 'embed' ? `<button class="btn btn-outline btn-block" data-go="knowledge">Used by knowledge bases</button>` : isActive ? `<button class="btn btn-outline grow" data-action="unload">${LA.modelState() === 'loaded' ? 'Unload' : 'Load'}</button><button class="btn btn-primary grow" data-action="chat">${I('chat', 'icon-sm')}Chat</button>` : `<button class="btn btn-primary btn-block" data-action="activate">Set as active model</button>`) : dl ? `<button class="btn btn-outline btn-block" data-go="dl-progress">View download · ${Math.round(dl.progress * 100)}%</button>` : `<button class="btn btn-primary btn-block" data-action="download">${I('download')}Download ${F.size(m.sizeGB)}</button>`}</div>`;
     },
     unmount() { draft = null; },
     changes: { ctxc: () => LA.refresh() },

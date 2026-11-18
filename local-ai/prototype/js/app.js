@@ -24,7 +24,7 @@ window.LA = window.LA || {};
   /* ---------- routes: only plain #name hashes (letters, digits, hyphens) ---------- */
   const ROUTES = [
     [/^welcome$/, 'welcome'], [/^home$/, 'home'], [/^chat$/, 'chats'], [/^chat-(.+)$/, 'chat'],
-    [/^models$/, 'models'], [/^downloads$/, 'downloads'], [/^model-(.+)$/, 'model'],
+    [/^models$/, 'models'], [/^dl-progress$/, 'downloads'], [/^model-(.+)$/, 'model'],
     [/^agents$/, 'agents'], [/^agent-new$/, 'agentForm'], [/^agent-edit-(.+)$/, 'agentForm'], [/^agent-(.+)$/, 'agent'],
     [/^workflow$/, 'workflow'], [/^knowledge$/, 'knowledge'], [/^kb-new$/, 'kbForm'], [/^kb-(.+)$/, 'kbDetail'], [/^doc-(.+)$/, 'doc'],
     [/^voice$/, 'voice'], [/^voice-(.+)$/, 'voice'], [/^studio$/, 'studio'], [/^scam$/, 'scam'], [/^read$/, 'read'], [/^tools$/, 'tools'], [/^memory$/, 'memory'], [/^memory-(.+)$/, 'memory'], [/^prefs$/, 'prefs'], [/^monitor$/, 'monitor']
@@ -118,7 +118,7 @@ window.LA = window.LA || {};
   /* ---------- reviewer panel ---------- */
   const SCREENS = [
     ['welcome', 'Welcome / Onboarding'], ['home', 'Home dashboard'], ['chat-c-lease', 'AI chat'], ['models', 'Model library'],
-    ['model-qwen3-4b', 'Model details'], ['downloads', 'Download progress'], ['agents', 'Agent Studio'], ['agent-new', 'Create agent'],
+    ['model-qwen3-4b', 'Model details'], ['dl-progress', 'Download progress'], ['agents', 'Agent Studio'], ['agent-new', 'Create agent'],
     ['agent-ag-atlas', 'Agent details'], ['workflow', 'Multi-agent workflow'], ['knowledge', 'Knowledge dashboard'], ['kb-new', 'Create knowledge base'],
     ['doc-doc-lease', 'Document details'], ['tools', 'Tool registry'], ['memory-ag-juno', 'Agent memory'], ['prefs', 'Settings'], ['monitor', 'Performance monitor'],
     ['chat-c-photo', 'Photo chat (vision)'], ['voice', 'Voice conversation'], ['studio', 'Document Studio'], ['scam', 'Scam check'], ['read', 'Read it to me']

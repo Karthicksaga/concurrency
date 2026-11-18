@@ -103,7 +103,7 @@ await step('Device profile: 8 GB marks Llama 3.1 8B as not recommended', async (
 await step('Downloads: start, pause and resume', async () => {
   await go('models');
   await page.click('[data-action=download][data-id=mistral-7b]');
-  await go('downloads');
+  await go('dl-progress');
   await page.click('[data-action=pause]');
   assert(await page.locator('[data-action=resume]').count() >= 1, 'resume visible');
   await page.locator('[data-action=resume]').first().click();
