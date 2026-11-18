@@ -1,0 +1,1155 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 4,
+    "identityHash": "b2313e1d49ee1765f9927e01da63fc45",
+    "entities": [
+      {
+        "tableName": "installed_model",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `family` TEXT NOT NULL, `paramsB` REAL NOT NULL, `quant` TEXT NOT NULL, `sizeBytes` INTEGER NOT NULL, `arch` TEXT NOT NULL, `ctxTrain` INTEGER NOT NULL, `layers` INTEGER NOT NULL, `kvHeads` INTEGER NOT NULL, `headDim` INTEGER NOT NULL, `license` TEXT NOT NULL, `fileName` TEXT NOT NULL, `sha256` TEXT, `source` TEXT NOT NULL, `installedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "family",
+            "columnName": "family",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "paramsB",
+            "columnName": "paramsB",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quant",
+            "columnName": "quant",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sizeBytes",
+            "columnName": "sizeBytes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "arch",
+            "columnName": "arch",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ctxTrain",
+            "columnName": "ctxTrain",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "layers",
+            "columnName": "layers",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kvHeads",
+            "columnName": "kvHeads",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "headDim",
+            "columnName": "headDim",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "license",
+            "columnName": "license",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileName",
+            "columnName": "fileName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sha256",
+            "columnName": "sha256",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "installedAt",
+            "columnName": "installedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "conversation",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `modelId` TEXT, `systemPrompt` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `agentId` TEXT, `kbIds` TEXT NOT NULL DEFAULT '', PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modelId",
+            "columnName": "modelId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "systemPrompt",
+            "columnName": "systemPrompt",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "agentId",
+            "columnName": "agentId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "kbIds",
+            "columnName": "kbIds",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "message",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `conversationId` TEXT NOT NULL, `role` TEXT NOT NULL, `content` TEXT NOT NULL, `status` TEXT NOT NULL, `modelId` TEXT, `genTps` REAL, `promptTps` REAL, `tokens` INTEGER, `createdAt` INTEGER NOT NULL, `sourcesJson` TEXT, `toolsJson` TEXT, `runId` TEXT, `imagePath` TEXT, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "conversationId",
+            "columnName": "conversationId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "role",
+            "columnName": "role",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "content",
+            "columnName": "content",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modelId",
+            "columnName": "modelId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "genTps",
+            "columnName": "genTps",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "promptTps",
+            "columnName": "promptTps",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "tokens",
+            "columnName": "tokens",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourcesJson",
+            "columnName": "sourcesJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "toolsJson",
+            "columnName": "toolsJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "runId",
+            "columnName": "runId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "imagePath",
+            "columnName": "imagePath",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "agent",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `role` TEXT NOT NULL, `description` TEXT NOT NULL, `systemPrompt` TEXT NOT NULL, `templateId` TEXT, `modelId` TEXT, `color` TEXT NOT NULL, `icon` TEXT NOT NULL, `tools` TEXT NOT NULL, `kbIds` TEXT NOT NULL, `memoryEnabled` INTEGER NOT NULL, `memoryAutoSave` INTEGER NOT NULL, `maxSteps` INTEGER NOT NULL, `maxToolCalls` INTEGER NOT NULL, `temperature` REAL NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `lastStatus` TEXT NOT NULL, `lastRunAt` INTEGER, `lastError` TEXT, `runs` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "role",
+            "columnName": "role",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "systemPrompt",
+            "columnName": "systemPrompt",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "templateId",
+            "columnName": "templateId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "modelId",
+            "columnName": "modelId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "color",
+            "columnName": "color",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "icon",
+            "columnName": "icon",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tools",
+            "columnName": "tools",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kbIds",
+            "columnName": "kbIds",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "memoryEnabled",
+            "columnName": "memoryEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "memoryAutoSave",
+            "columnName": "memoryAutoSave",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maxSteps",
+            "columnName": "maxSteps",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maxToolCalls",
+            "columnName": "maxToolCalls",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "temperature",
+            "columnName": "temperature",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastStatus",
+            "columnName": "lastStatus",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastRunAt",
+            "columnName": "lastRunAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "lastError",
+            "columnName": "lastError",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "runs",
+            "columnName": "runs",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "knowledge_base",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `description` TEXT NOT NULL, `scope` TEXT NOT NULL, `ownerAgentId` TEXT, `embedModelId` TEXT NOT NULL, `chunkSize` INTEGER NOT NULL, `chunkOverlap` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `sourceUri` TEXT, `lastSyncedAt` INTEGER, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ownerAgentId",
+            "columnName": "ownerAgentId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "embedModelId",
+            "columnName": "embedModelId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chunkSize",
+            "columnName": "chunkSize",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chunkOverlap",
+            "columnName": "chunkOverlap",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceUri",
+            "columnName": "sourceUri",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "lastSyncedAt",
+            "columnName": "lastSyncedAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "document",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `kbId` TEXT NOT NULL, `title` TEXT NOT NULL, `kind` TEXT NOT NULL, `sizeBytes` INTEGER NOT NULL, `pages` INTEGER, `status` TEXT NOT NULL, `progress` REAL NOT NULL, `chunkCount` INTEGER NOT NULL, `error` TEXT, `storedPath` TEXT NOT NULL, `sha256` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `indexedAt` INTEGER, `semantic` INTEGER NOT NULL, `sourceUri` TEXT, `sourceModified` INTEGER, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kbId",
+            "columnName": "kbId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sizeBytes",
+            "columnName": "sizeBytes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pages",
+            "columnName": "pages",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "progress",
+            "columnName": "progress",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chunkCount",
+            "columnName": "chunkCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "error",
+            "columnName": "error",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "storedPath",
+            "columnName": "storedPath",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sha256",
+            "columnName": "sha256",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "indexedAt",
+            "columnName": "indexedAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "semantic",
+            "columnName": "semantic",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceUri",
+            "columnName": "sourceUri",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sourceModified",
+            "columnName": "sourceModified",
+            "affinity": "INTEGER",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_document_kbId",
+            "unique": false,
+            "columnNames": [
+              "kbId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_document_kbId` ON `${TABLE_NAME}` (`kbId`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "chunk",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `kbId` TEXT NOT NULL, `docId` TEXT NOT NULL, `ordinal` INTEGER NOT NULL, `text` TEXT NOT NULL, `location` TEXT, `tokenCount` INTEGER NOT NULL, `embedding` BLOB)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kbId",
+            "columnName": "kbId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "docId",
+            "columnName": "docId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ordinal",
+            "columnName": "ordinal",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "text",
+            "columnName": "text",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "location",
+            "columnName": "location",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "tokenCount",
+            "columnName": "tokenCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "embedding",
+            "columnName": "embedding",
+            "affinity": "BLOB",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_chunk_docId",
+            "unique": false,
+            "columnNames": [
+              "docId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_chunk_docId` ON `${TABLE_NAME}` (`docId`)"
+          },
+          {
+            "name": "index_chunk_kbId",
+            "unique": false,
+            "columnNames": [
+              "kbId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_chunk_kbId` ON `${TABLE_NAME}` (`kbId`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "ftsVersion": "FTS4",
+        "ftsOptions": {
+          "tokenizer": "simple",
+          "tokenizerArgs": [],
+          "contentTable": "chunk",
+          "languageIdColumnName": "",
+          "matchInfo": "FTS4",
+          "notIndexedColumns": [],
+          "prefixSizes": [],
+          "preferredOrder": "ASC"
+        },
+        "contentSyncTriggers": [
+          "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_chunk_fts_BEFORE_UPDATE BEFORE UPDATE ON `chunk` BEGIN DELETE FROM `chunk_fts` WHERE `docid`=OLD.`rowid`; END",
+          "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_chunk_fts_BEFORE_DELETE BEFORE DELETE ON `chunk` BEGIN DELETE FROM `chunk_fts` WHERE `docid`=OLD.`rowid`; END",
+          "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_chunk_fts_AFTER_UPDATE AFTER UPDATE ON `chunk` BEGIN INSERT INTO `chunk_fts`(`docid`, `text`) VALUES (NEW.`rowid`, NEW.`text`); END",
+          "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_chunk_fts_AFTER_INSERT AFTER INSERT ON `chunk` BEGIN INSERT INTO `chunk_fts`(`docid`, `text`) VALUES (NEW.`rowid`, NEW.`text`); END"
+        ],
+        "tableName": "chunk_fts",
+        "createSql": "CREATE VIRTUAL TABLE IF NOT EXISTS `${TABLE_NAME}` USING FTS4(`text` TEXT NOT NULL, content=`chunk`)",
+        "fields": [
+          {
+            "fieldPath": "text",
+            "columnName": "text",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": []
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "memory",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `agentId` TEXT NOT NULL, `kind` TEXT NOT NULL, `content` TEXT NOT NULL, `importance` INTEGER NOT NULL, `pinned` INTEGER NOT NULL, `status` TEXT NOT NULL, `source` TEXT, `createdAt` INTEGER NOT NULL, `lastUsedAt` INTEGER, `useCount` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "agentId",
+            "columnName": "agentId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "content",
+            "columnName": "content",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "importance",
+            "columnName": "importance",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pinned",
+            "columnName": "pinned",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastUsedAt",
+            "columnName": "lastUsedAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "useCount",
+            "columnName": "useCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_memory_agentId",
+            "unique": false,
+            "columnNames": [
+              "agentId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_memory_agentId` ON `${TABLE_NAME}` (`agentId`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "note",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `body` TEXT NOT NULL, `createdBy` TEXT NOT NULL, `agentId` TEXT, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "body",
+            "columnName": "body",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdBy",
+            "columnName": "createdBy",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "agentId",
+            "columnName": "agentId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "tool_call",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `agentId` TEXT, `toolId` TEXT NOT NULL, `input` TEXT NOT NULL, `output` TEXT NOT NULL, `status` TEXT NOT NULL, `durationMs` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "agentId",
+            "columnName": "agentId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "toolId",
+            "columnName": "toolId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "input",
+            "columnName": "input",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "output",
+            "columnName": "output",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "durationMs",
+            "columnName": "durationMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "run",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `request` TEXT NOT NULL, `status` TEXT NOT NULL, `finalAnswer` TEXT, `conversationId` TEXT, `agentIds` TEXT NOT NULL, `tokens` INTEGER NOT NULL, `startedAt` INTEGER NOT NULL, `finishedAt` INTEGER, `error` TEXT, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "request",
+            "columnName": "request",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "finalAnswer",
+            "columnName": "finalAnswer",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "conversationId",
+            "columnName": "conversationId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "agentIds",
+            "columnName": "agentIds",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tokens",
+            "columnName": "tokens",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAt",
+            "columnName": "startedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "finishedAt",
+            "columnName": "finishedAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "error",
+            "columnName": "error",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "run_step",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `runId` TEXT NOT NULL, `ordinal` INTEGER NOT NULL, `kind` TEXT NOT NULL, `agentId` TEXT, `title` TEXT NOT NULL, `instruction` TEXT NOT NULL, `dependsOn` TEXT NOT NULL, `state` TEXT NOT NULL, `output` TEXT NOT NULL, `error` TEXT, `attempt` INTEGER NOT NULL, `tokens` INTEGER NOT NULL, `startedAt` INTEGER, `finishedAt` INTEGER, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "runId",
+            "columnName": "runId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ordinal",
+            "columnName": "ordinal",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "agentId",
+            "columnName": "agentId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "instruction",
+            "columnName": "instruction",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dependsOn",
+            "columnName": "dependsOn",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "output",
+            "columnName": "output",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "error",
+            "columnName": "error",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "attempt",
+            "columnName": "attempt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tokens",
+            "columnName": "tokens",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAt",
+            "columnName": "startedAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "finishedAt",
+            "columnName": "finishedAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_run_step_runId",
+            "unique": false,
+            "columnNames": [
+              "runId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_run_step_runId` ON `${TABLE_NAME}` (`runId`)"
+          }
+        ],
+        "foreignKeys": []
+      }
+    ],
+    "views": [],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'b2313e1d49ee1765f9927e01da63fc45')"
+    ]
+  }
+}

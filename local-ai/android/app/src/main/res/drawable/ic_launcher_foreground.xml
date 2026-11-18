@@ -1,0 +1,6 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- chip: rounded square with inner core and pins -->
+    <path android:fillColor="#FF8EA8FF" android:pathData="M40,36h28a4,4 0,0 1,4 4v28a4,4 0,0 1,-4 4H40a4,4 0,0 1,-4 -4V40a4,4 0,0 1,4 -4z"/>
+    <path android:fillColor="#FF0B0E13" android:pathData="M46,46h16v16H46z"/>
+    <path android:fillColor="#FF8EA8FF" android:pathData="M44,28h3v8h-3zM52.5,28h3v8h-3zM61,28h3v8h-3zM44,72h3v8h-3zM52.5,72h3v8h-3zM61,72h3v8h-3zM28,44h8v3h-8zM28,52.5h8v3h-8zM28,61h8v3h-8zM72,44h8v3h-8zM72,52.5h8v3h-8zM72,61h8v3h-8z"/>
+</vector>
