@@ -21,7 +21,36 @@ object CrashReport {
     private fun file(c: Context) = File(c.filesDir, "crash/last.txt")
     private fun prefs(c: Context) = c.getSharedPreferences("crash", Context.MODE_PRIVATE)
 
+    @Volatile private var stepFile: File? = null
+
+    /**
+     * Notes which native step is running ("generating with SmolVLM, photo", "loading voice Amy"), written straight to
+     * disk so it survives a native crash, which kills the process before any Java code can run.
+     */
+    fun step(label: String) {
+        val f = stepFile ?: return
+        runCatching { java.io.RandomAccessFile(f, "rwd").use { it.setLength(0); it.write("${System.currentTimeMillis()}|$label".toByteArray()) } }
+    }
+    fun idle() = step("idle")
+
+    private fun lastStep(): Pair<Long, String>? = runCatching {
+        val t = stepFile?.takeIf { it.exists() }?.readText() ?: return null
+        val (ts, label) = t.split('|', limit = 2)
+        if (label == "idle") null else ts.toLong() to label
+    }.getOrNull()
+
+    /** Readable lines from a native tombstone (protobuf): abort message, signal, and stack frames with function names. */
+    fun tombstoneLines(bytes: ByteArray): List<String> {
+        val runs = ArrayList<String>(); val sb = StringBuilder()
+        fun flush() { if (sb.length >= 5) runs += sb.toString(); sb.setLength(0) }
+        for (b in bytes) { val c = b.toInt() and 0xff; if (c in 0x20..0x7e) sb.append(c.toChar()) else flush() }
+        flush()
+        val interesting = Regex("\\.so|abort|Abort|SIG|signal|fault|ggml|llama|mtmd|clip|sherpa|onnx|tesseract|lept|terminate|exception|Fatal|assert|GGML|std::|_Z")
+        return runs.filter { interesting.containsMatchIn(it) && !it.startsWith("/system/framework") }.distinct().take(40)
+    }
+
     fun install(context: Context) {
+        stepFile = File(context.filesDir, "crash/step.txt").apply { parentFile?.mkdirs() }
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
             runCatching {
@@ -41,13 +70,19 @@ object CrashReport {
             val seen = prefs(context).getLong("seen", 0)
             am.getHistoricalProcessExitReasons(context.packageName, 0, 5)
                 .filter { x -> x.timestamp > seen && realProblem(x.reason, x.importance, x.processName.orEmpty()) }
-                .take(3).forEach { x ->
+                .take(3).forEachIndexed { i, x ->
                     val what = when (x.reason) {
                         ApplicationExitInfo.REASON_CRASH_NATIVE -> "native crash"; ApplicationExitInfo.REASON_CRASH -> "Java crash"
                         ApplicationExitInfo.REASON_ANR -> "not responding (ANR)"; else -> "killed for low memory"
                     }
-                    parts += "Exit: $what in ${x.processName} at ${SimpleDateFormat("d MMM HH:mm:ss", Locale.US).format(Date(x.timestamp))}" +
+                    var text = "Exit: $what in ${x.processName} at ${SimpleDateFormat("d MMM HH:mm:ss", Locale.US).format(Date(x.timestamp))}" +
                         " · ${x.description ?: ""} · memory ${x.pss / 1024} MB"
+                    if (i == 0) lastStep()?.let { (ts, label) -> if (ts <= x.timestamp) text += "\nLast step: $label (${(x.timestamp - ts) / 1000}s before)" }
+                    if (x.reason == ApplicationExitInfo.REASON_CRASH_NATIVE && Build.VERSION.SDK_INT >= 31) runCatching {
+                        x.traceInputStream?.use { s -> s.readNBytesCompat(4_000_000) }?.let { tombstoneLines(it) }
+                            ?.takeIf { it.isNotEmpty() }?.let { text += "\n" + it.joinToString("\n") }
+                    }
+                    parts += text
                 }
         }
         if (parts.isEmpty()) return null
@@ -70,9 +105,16 @@ object CrashReport {
     }
 
     /** The first lines worth reading (exception and top frames), shown in the dialog so a screenshot is enough. */
-    fun summary(report: String): String = report.lineSequence().filter { it.isNotBlank() }.take(9).joinToString("\n").take(900)
+    fun summary(report: String): String = report.lineSequence().filter { it.isNotBlank() }.take(24).joinToString("\n").take(2400)
+
+    private fun java.io.InputStream.readNBytesCompat(max: Int): ByteArray {
+        val out = java.io.ByteArrayOutputStream(); val buf = ByteArray(65536); var total = 0
+        while (total < max) { val n = read(buf, 0, minOf(buf.size, max - total)); if (n < 0) break; out.write(buf, 0, n); total += n }
+        return out.toByteArray()
+    }
 
     fun dismiss(context: Context) {
+        idle()
         file(context).delete()
         prefs(context).edit().putLong("seen", System.currentTimeMillis()).apply()
     }

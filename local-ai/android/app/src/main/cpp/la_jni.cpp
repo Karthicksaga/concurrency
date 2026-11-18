@@ -62,6 +62,16 @@ void free_all() {
     g_cache.clear();
 }
 
+// After an exception the KV cache may be half-written: forget it so the next turn starts clean.
+int ERR_DECODE_RESET() {
+    std::lock_guard<std::mutex> lock(g_mu);
+    if (g_ctx) if (llama_memory_t m = llama_get_memory(g_ctx)) llama_memory_clear(m, true);
+    g_cache.clear();
+    return ERR_DECODE;
+}
+
+void free_all_locked() { std::lock_guard<std::mutex> lock(g_mu); free_all(); }
+
 // Length of the longest prefix of `s` made of complete UTF-8 sequences.
 size_t utf8_complete_prefix(const std::string & s) {
     size_t i = 0, last_ok = 0;
@@ -118,8 +128,7 @@ Java_com_localai_app_runtime_inference_LlamaNative_systemInfo(JNIEnv * env, jobj
     return env->NewStringUTF(llama_print_system_info());
 }
 
-JNIEXPORT jint JNICALL
-Java_com_localai_app_runtime_inference_LlamaNative_loadModel(JNIEnv * env, jobject, jstring jpath, jint nCtx,
+static jint loadModel_impl(JNIEnv * env, jobject, jstring jpath, jint nCtx,
                                                              jint nThreads, jint nBatch, jboolean kvQ8) {
     std::lock_guard<std::mutex> lock(g_mu);
     free_all();
@@ -182,8 +191,7 @@ Java_com_localai_app_runtime_inference_LlamaNative_abort(JNIEnv *, jobject) {
     g_abort.store(true);   // deliberately lock-free: generation holds g_mu
 }
 
-JNIEXPORT jint JNICALL
-Java_com_localai_app_runtime_inference_LlamaNative_generate(JNIEnv * env, jobject, jobjectArray jroles,
+static jint generate_impl(JNIEnv * env, jobject, jobjectArray jroles,
                                                             jobjectArray jcontents, jint maxTokens, jfloat temp,
                                                             jfloat topP, jint topK, jfloat minP, jfloat repeatPenalty,
                                                             jint seed, jboolean enableThinking, jstring jgrammar,
@@ -201,8 +209,11 @@ Java_com_localai_app_runtime_inference_LlamaNative_generate(JNIEnv * env, jobjec
     const jsize n = env->GetArrayLength(jroles);
     for (jsize i = 0; i < n; ++i) {
         common_chat_msg m;
-        m.role    = jstr(env, (jstring) env->GetObjectArrayElement(jroles, i));
-        m.content = jstr(env, (jstring) env->GetObjectArrayElement(jcontents, i));
+        auto jr = (jstring) env->GetObjectArrayElement(jroles, i);
+        auto jc = (jstring) env->GetObjectArrayElement(jcontents, i);
+        m.role    = jstr(env, jr);
+        m.content = jstr(env, jc);
+        env->DeleteLocalRef(jr); env->DeleteLocalRef(jc);
         in.messages.push_back(std::move(m));
     }
     in.add_generation_prompt = true;
@@ -291,11 +302,12 @@ Java_com_localai_app_runtime_inference_LlamaNative_generate(JNIEnv * env, jobjec
     const llama_vocab * vocab = llama_model_get_vocab(g_model);
     llama_sampler_chain_params sp = llama_sampler_chain_default_params();
     llama_sampler * smpl = llama_sampler_chain_init(sp);
+    struct SamplerFree { llama_sampler *& p; ~SamplerFree() { if (p) llama_sampler_free(p); } } smpl_guard{smpl};
     // Grammar-constrained output (plans, tool calls): only tokens that keep the JSON valid can be sampled.
     const std::string grammar = jgrammar ? jstr(env, jgrammar) : std::string();
     if (!grammar.empty()) {
         llama_sampler * g = llama_sampler_init_grammar(vocab, grammar.c_str(), "root");
-        if (!g) { llama_sampler_free(smpl); LOGE("invalid grammar"); return ERR_TEMPLATE; }
+        if (!g) { LOGE("invalid grammar"); return ERR_TEMPLATE; }
         llama_sampler_chain_add(smpl, g);
     }
     // top-k first: the repetition penalty is slow on the full vocabulary (see llama.h)
@@ -335,7 +347,7 @@ Java_com_localai_app_runtime_inference_LlamaNative_generate(JNIEnv * env, jobjec
         g_cache.push_back(id);
         ++n_gen;
     }
-    llama_sampler_free(smpl);
+    llama_sampler_free(smpl); smpl = nullptr;
     if (status == ERR_DECODE) { llama_memory_clear(mem, true); g_cache.clear(); }
 
     const auto t2 = std::chrono::steady_clock::now();
@@ -345,8 +357,7 @@ Java_com_localai_app_runtime_inference_LlamaNative_generate(JNIEnv * env, jobjec
     return status;
 }
 
-JNIEXPORT jint JNICALL
-Java_com_localai_app_runtime_inference_LlamaNative_loadProjector(JNIEnv * env, jobject, jstring jpath, jint nThreads) {
+static jint loadProjector_impl(JNIEnv * env, jobject, jstring jpath, jint nThreads) {
     std::lock_guard<std::mutex> lock(g_mu);
     if (!g_model) return -1;
     if (g_mtmd) { mtmd_free(g_mtmd); g_mtmd = nullptr; }
@@ -368,8 +379,7 @@ Java_com_localai_app_runtime_inference_LlamaNative_schemaToGrammar(JNIEnv * env,
     }
 }
 
-JNIEXPORT jint JNICALL
-Java_com_localai_app_runtime_inference_LlamaNative_loadEmbedder(JNIEnv * env, jobject, jstring jpath, jint nThreads) {
+static jint loadEmbedder_impl(JNIEnv * env, jobject, jstring jpath, jint nThreads) {
     std::lock_guard<std::mutex> lock(g_emu);
     if (g_ectx) { llama_free(g_ectx); g_ectx = nullptr; }
     if (g_emodel) { llama_model_free(g_emodel); g_emodel = nullptr; }
@@ -396,8 +406,7 @@ Java_com_localai_app_runtime_inference_LlamaNative_unloadEmbedder(JNIEnv *, jobj
 }
 
 // Returns one L2-normalised vector per input text (texts are truncated to 512 tokens).
-JNIEXPORT jobjectArray JNICALL
-Java_com_localai_app_runtime_inference_LlamaNative_embed(JNIEnv * env, jobject, jobjectArray jtexts) {
+static jobjectArray embed_impl(JNIEnv * env, jobject, jobjectArray jtexts) {
     std::lock_guard<std::mutex> lock(g_emu);
     if (!g_ectx) return nullptr;
     const int n_embd = llama_model_n_embd_out(g_emodel);
@@ -405,7 +414,9 @@ Java_com_localai_app_runtime_inference_LlamaNative_embed(JNIEnv * env, jobject, 
     jobjectArray out = env->NewObjectArray(n, env->FindClass("[F"), nullptr);
     std::vector<float> v(n_embd);
     for (jsize i = 0; i < n; ++i) {
-        auto toks = common_tokenize(g_ectx, jstr(env, (jstring) env->GetObjectArrayElement(jtexts, i)), true, false);
+        auto jt = (jstring) env->GetObjectArrayElement(jtexts, i);
+        auto toks = common_tokenize(g_ectx, jstr(env, jt), true, false);
+        env->DeleteLocalRef(jt);
         if (toks.size() > 512) { const auto last = toks.back(); toks.resize(511); toks.push_back(last); }
         if (toks.empty()) continue;
         if (llama_memory_t m = llama_get_memory(g_ectx)) llama_memory_clear(m, true);
@@ -422,6 +433,42 @@ Java_com_localai_app_runtime_inference_LlamaNative_embed(JNIEnv * env, jobject, 
         env->DeleteLocalRef(arr);
     }
     return out;
+}
+
+// Every entry point that runs llama.cpp code is guarded: a C++ exception escaping into JNI (for example a grammar
+// that rejects every token, or a malformed image or model file) would otherwise abort the whole app.
+#define LA_GUARD(fallback, call) try { return call; } \
+    catch (const std::exception & e) { LOGE("%s failed: %s", __func__, e.what()); } \
+    catch (...) { LOGE("%s failed: unknown exception", __func__); } \
+    return fallback;
+
+JNIEXPORT jint JNICALL
+Java_com_localai_app_runtime_inference_LlamaNative_generate(JNIEnv * env, jobject o, jobjectArray jroles,
+        jobjectArray jcontents, jint maxTokens, jfloat temp, jfloat topP, jint topK, jfloat minP, jfloat repeatPenalty,
+        jint seed, jboolean enableThinking, jstring jgrammar, jbyteArray jrgb, jint imgW, jint imgH, jobject callback) {
+    LA_GUARD(ERR_DECODE_RESET(), generate_impl(env, o, jroles, jcontents, maxTokens, temp, topP, topK, minP, repeatPenalty,
+                                         seed, enableThinking, jgrammar, jrgb, imgW, imgH, callback))
+}
+
+JNIEXPORT jint JNICALL
+Java_com_localai_app_runtime_inference_LlamaNative_loadModel(JNIEnv * env, jobject o, jstring jpath, jint nCtx,
+        jint nThreads, jint nBatch, jboolean kvQ8) {
+    LA_GUARD((free_all_locked(), -1), loadModel_impl(env, o, jpath, nCtx, nThreads, nBatch, kvQ8))
+}
+
+JNIEXPORT jint JNICALL
+Java_com_localai_app_runtime_inference_LlamaNative_loadProjector(JNIEnv * env, jobject o, jstring jpath, jint nThreads) {
+    LA_GUARD(-2, loadProjector_impl(env, o, jpath, nThreads))
+}
+
+JNIEXPORT jint JNICALL
+Java_com_localai_app_runtime_inference_LlamaNative_loadEmbedder(JNIEnv * env, jobject o, jstring jpath, jint nThreads) {
+    LA_GUARD(-1, loadEmbedder_impl(env, o, jpath, nThreads))
+}
+
+JNIEXPORT jobjectArray JNICALL
+Java_com_localai_app_runtime_inference_LlamaNative_embed(JNIEnv * env, jobject o, jobjectArray jtexts) {
+    LA_GUARD(nullptr, embed_impl(env, o, jtexts))
 }
 
 } // extern "C"

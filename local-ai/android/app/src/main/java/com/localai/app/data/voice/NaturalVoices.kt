@@ -143,14 +143,17 @@ class NaturalTtsEngine(private val context: Context) {
             else -> OfflineTtsModelConfig(vits = OfflineTtsVitsModelConfig(model = File(d, v.modelFile).path, tokens = File(d, "tokens.txt").path, dataDir = data),
                 numThreads = threads, debug = false, provider = "cpu")
         }
+        com.localai.app.CrashReport.step("loading natural voice ${v.name}")
         tts = runCatching { OfflineTts(config = OfflineTtsConfig(model = model, maxNumSentences = 1)) }.getOrNull()
+        com.localai.app.CrashReport.idle()
         loadedId = if (tts != null) v.id else null
         return tts != null
     }
 
     fun generate(text: String, speaker: Int, speed: Float): Speech? {
         val t = tts ?: return null
-        val a = runCatching { t.generate(text, speaker, speed) }.getOrNull() ?: return null
+        com.localai.app.CrashReport.step("speaking with natural voice $loadedId (${text.length} chars)")
+        val a = try { runCatching { t.generate(text, speaker, speed) }.getOrNull() } finally { com.localai.app.CrashReport.idle() } ?: return null
         return if (a.samples.isEmpty()) null else Speech(a.samples, a.sampleRate)
     }
 

@@ -111,8 +111,10 @@ class LlamaEngine @Inject constructor(@ApplicationContext private val context: C
 
     private suspend fun ensureInit() = withContext(dispatcher) {
         if (!initialised) {
+            com.localai.app.CrashReport.step("starting the model engine")
             LlamaNative.init(context.applicationInfo.nativeLibraryDir)
             systemInfo = LlamaNative.systemInfo()
+            com.localai.app.CrashReport.idle()
             initialised = true
         }
     }
@@ -121,7 +123,9 @@ class LlamaEngine @Inject constructor(@ApplicationContext private val context: C
         ensureInit()
         _state.value = EngineState.Loading(modelId)
         withContext(dispatcher) {
+            com.localai.app.CrashReport.step("loading model $modelId (${file.length() / 1_000_000} MB, ctx ${config.contextLength}, threads ${config.threads})")
             val rc = LlamaNative.loadModel(file.absolutePath, config.contextLength, config.threads, config.batch, config.kvQ8)
+            com.localai.app.CrashReport.idle()
             if (rc == 0) {
                 val info = LlamaNative.modelInfo().split("|")
                 _state.value = EngineState.Ready(modelId, info.getOrElse(0) { "" }, info.getOrNull(3)?.toIntOrNull() ?: config.contextLength, config)
@@ -139,7 +143,10 @@ class LlamaEngine @Inject constructor(@ApplicationContext private val context: C
     suspend fun loadProjector(file: File, threads: Int): Result<Unit> = mutex.withLock {
         val ready = _state.value as? EngineState.Ready ?: return@withLock Result.failure(IllegalStateException("No model is loaded."))
         withContext(dispatcher) {
-            when (LlamaNative.loadProjector(file.absolutePath, threads)) {
+            com.localai.app.CrashReport.step("loading image encoder for ${ready.modelId}")
+            val prc = LlamaNative.loadProjector(file.absolutePath, threads)
+            com.localai.app.CrashReport.idle()
+            when (prc) {
                 0 -> { _state.value = ready.copy(vision = true); Result.success(Unit) }
                 -3 -> Result.failure(IllegalStateException("This image encoder has no image support."))
                 else -> Result.failure(IllegalStateException("The image encoder could not be loaded."))
@@ -167,6 +174,8 @@ class LlamaEngine @Inject constructor(@ApplicationContext private val context: C
             }
             _generating.value = true
             var stats: GenerationStats? = null
+            com.localai.app.CrashReport.step("generating with ${st.modelId}" + (if (image != null) ", photo ${image.width}x${image.height}" else "") +
+                (if (grammar != null) ", structured (tool choice)" else "") + ", ${turns.size} turns, ${turns.sumOf { it.content.length }} chars")
             val rc = try {
                 withContext(dispatcher) {
                     LlamaNative.generate(
@@ -182,6 +191,7 @@ class LlamaEngine @Inject constructor(@ApplicationContext private val context: C
                     )
                 }
             } finally {
+                com.localai.app.CrashReport.idle()
                 finished.complete(Unit)
                 watcher.cancel()
                 _generating.value = false
@@ -228,14 +238,19 @@ class EmbeddingEngine @Inject constructor(@ApplicationContext private val contex
         engine.ensureNativeInit()
         if (loadedPath == file.absolutePath) return@withLock true
         withContext(dispatcher) {
+            com.localai.app.CrashReport.step("loading the knowledge (embedding) model")
             val d = LlamaNative.loadEmbedder(file.absolutePath, threads)
+            com.localai.app.CrashReport.idle()
             if (d > 0) { dim = d; loadedPath = file.absolutePath; true } else { loadedPath = null; false }
         }
     }
 
     suspend fun embed(texts: List<String>): List<FloatArray?> = mutex.withLock {
         if (loadedPath == null) return@withLock texts.map { null }
-        withContext(dispatcher) { LlamaNative.embed(texts.toTypedArray())?.toList() ?: texts.map { null } }
+        withContext(dispatcher) {
+            com.localai.app.CrashReport.step("indexing knowledge: ${texts.size} chunks")
+            try { LlamaNative.embed(texts.toTypedArray())?.toList() ?: texts.map { null } } finally { com.localai.app.CrashReport.idle() }
+        }
     }
 
     suspend fun unload() = mutex.withLock { withContext(dispatcher) { LlamaNative.unloadEmbedder() }; loadedPath = null }
