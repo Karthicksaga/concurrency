@@ -39,8 +39,24 @@ object CrashReport {
         if (label == "idle") null else ts.toLong() to label
     }.getOrNull()
 
-    /** Readable lines from a native tombstone (protobuf): abort message, signal, and stack frames with function names. */
-    fun tombstoneLines(bytes: ByteArray): List<String> {
+    /** Whether the previous run of the main process ended in a crash, ANR or a memory kill. */
+    fun lastExitWasProblem(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < 30) return file(context).exists()
+        return runCatching {
+            context.getSystemService(ActivityManager::class.java).getHistoricalProcessExitReasons(context.packageName, 0, 4)
+                .firstOrNull { !it.processName.orEmpty().endsWith(":ocr") }?.reason in setOf(ApplicationExitInfo.REASON_CRASH,
+                    ApplicationExitInfo.REASON_CRASH_NATIVE, ApplicationExitInfo.REASON_ANR, ApplicationExitInfo.REASON_LOW_MEMORY)
+        }.getOrDefault(false)
+    }
+
+    /**
+     * The useful part of a native tombstone (Android's protobuf crash record): signal, abort message, the crashing
+     * thread's stack, and the app's last warning/error log lines. Falls back to printable strings if parsing fails.
+     */
+    fun tombstoneLines(bytes: ByteArray): List<String> = runCatching { Tombstone.summarize(bytes) }.getOrNull()?.takeIf { it.isNotEmpty() }
+        ?: printableStrings(bytes)
+
+    private fun printableStrings(bytes: ByteArray): List<String> {
         val runs = ArrayList<String>(); val sb = StringBuilder()
         fun flush() { if (sb.length >= 5) runs += sb.toString(); sb.setLength(0) }
         for (b in bytes) { val c = b.toInt() and 0xff; if (c in 0x20..0x7e) sb.append(c.toChar()) else flush() }
@@ -53,6 +69,8 @@ object CrashReport {
         stepFile = File(context.filesDir, "crash/step.txt").apply { parentFile?.mkdirs() }
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            runCatching { file(context).apply { parentFile?.mkdirs() }.writeText("Java crash in thread ${t.name}: ${e.javaClass.name}: ${e.message?.take(300)}\n" +
+                e.stackTrace.take(12).joinToString("\n") { "  at $it" }) }
             runCatching {
                 val sw = StringWriter(); e.printStackTrace(PrintWriter(sw))
                 file(context).apply { parentFile?.mkdirs() }.writeText("Java crash in thread ${t.name}\n" + sw.toString().take(30_000))
@@ -105,7 +123,7 @@ object CrashReport {
     }
 
     /** The first lines worth reading (exception and top frames), shown in the dialog so a screenshot is enough. */
-    fun summary(report: String): String = report.lineSequence().filter { it.isNotBlank() }.take(24).joinToString("\n").take(2400)
+    fun summary(report: String): String = report.lineSequence().filter { it.isNotBlank() }.take(40).joinToString("\n").take(4000)
 
     private fun java.io.InputStream.readNBytesCompat(max: Int): ByteArray {
         val out = java.io.ByteArrayOutputStream(); val buf = ByteArray(65536); var total = 0

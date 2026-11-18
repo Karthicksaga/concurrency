@@ -6,6 +6,7 @@
 
 #include <jni.h>
 #include <android/log.h>
+#include <android/set_abort_message.h>
 
 #include <atomic>
 #include <cmath>
@@ -117,6 +118,12 @@ JNIEXPORT void JNICALL
 Java_com_localai_app_runtime_inference_LlamaNative_init(JNIEnv * env, jobject, jstring nativeLibDir) {
     std::lock_guard<std::mutex> lock(g_mu);
     llama_log_set(log_cb, nullptr);
+    // A failed GGML_ASSERT aborts the process. Put its message in the log and in the crash report's abort message,
+    // so the in-app crash report says which check failed.
+    ggml_set_abort_callback([](const char * msg) {
+        __android_log_print(ANDROID_LOG_FATAL, TAG, "ggml abort: %s", msg ? msg : "");
+        android_set_abort_message(msg ? msg : "ggml abort");
+    });
     const std::string dir = jstr(env, nativeLibDir);
     ggml_backend_load_all_from_path(dir.c_str());   // picks the best CPU variant for this SoC
     llama_backend_init();

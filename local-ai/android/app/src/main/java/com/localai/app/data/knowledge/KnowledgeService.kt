@@ -197,6 +197,7 @@ class KnowledgeService @Inject constructor(
             try {
                 // Photos queued from a linked folder by 0.1.9 are dropped (folder sync no longer imports photos).
                 dao.pending().filter { it.kind == DocKind.IMAGE.name && it.sourceUri != null }.forEach { deleteDoc(it.id) }
+                skipFileThatCrashed()
                 while (true) {
                     val next = dao.pending().firstOrNull() ?: break
                     process(next)
@@ -207,8 +208,36 @@ class KnowledgeService @Inject constructor(
 
     private suspend fun waitWhileChatting() { while (engine.generating.value) delay(500) }   // interactive work first
 
+    // ---------- crash-loop protection ----------
+    // The file being indexed is noted on disk before work starts and cleared when it ends (indexed or failed).
+    // If the app dies in between (a native crash, or Android killing it for memory), the same file would be picked
+    // up again on every start and crash the app every time. Instead it is marked failed and skipped.
+    private val inProgress = context.getSharedPreferences("indexing", Context.MODE_PRIVATE)
+
+    private suspend fun skipFileThatCrashed() {
+        val id = inProgress.getString("doc", null) ?: return
+        val tries = inProgress.getInt("tries", 0) + 1
+        val doc = dao.pending().firstOrNull { it.id == id }
+        if (doc == null) { inProgress.edit().clear().commit(); return }
+        if (com.localai.app.CrashReport.lastExitWasProblem(context) || tries >= 3) {
+            dao.deleteChunks(id)
+            dao.upsertDoc(doc.copy(status = "FAILED", progress = 0f, error = "LOCAL AI closed while reading this file, so it was skipped. " +
+                "It may be too large or damaged for this phone. Try splitting it, or saving it as a smaller PDF or text file."))
+            inProgress.edit().clear().commit()
+        } else inProgress.edit().putInt("tries", tries).commit()      // e.g. the app was swiped away: try again
+    }
+
     private suspend fun process(d: DocumentEntity) {
         val kb = dao.kb(d.kbId) ?: run { dao.deleteDoc(d.id); return }
+        if (inProgress.getString("doc", null) != d.id) inProgress.edit().putString("doc", d.id).putInt("tries", 0).commit()
+        try {
+            processInner(d, kb)
+        } finally {
+            inProgress.edit().clear().commit()
+        }
+    }
+
+    private suspend fun processInner(d: DocumentEntity, kb: KnowledgeBaseEntity) {
         try {
             dao.setStatus(d.id, "EXTRACTING", 0.05f)
             val kind = DocKind.valueOf(d.kind)

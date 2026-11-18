@@ -95,7 +95,8 @@ sealed interface EngineState {
  */
 @Singleton
 class LlamaEngine @Inject constructor(@ApplicationContext private val context: Context) {
-    private val dispatcher = Executors.newSingleThreadExecutor { r -> Thread(r, "llama-engine").apply { priority = Thread.MAX_PRIORITY } }.asCoroutineDispatcher()
+    /** The one thread that runs llama.cpp: chat, vision and embeddings never run natively at the same time. */
+    internal val dispatcher = Executors.newSingleThreadExecutor { r -> Thread(r, "llama-engine").apply { priority = Thread.MAX_PRIORITY } }.asCoroutineDispatcher()
     private val mutex = Mutex()
     private val _state = MutableStateFlow<EngineState>(EngineState.Idle)
     val state: StateFlow<EngineState> = _state.asStateFlow()
@@ -229,7 +230,8 @@ object Grammars {
 /** Small embedding model in its own context (docs/KNOWLEDGE_ENGINE_DESIGN.md §4). */
 @Singleton
 class EmbeddingEngine @Inject constructor(@ApplicationContext private val context: Context, private val engine: LlamaEngine) {
-    private val dispatcher = Executors.newSingleThreadExecutor { r -> Thread(r, "embedder") }.asCoroutineDispatcher()
+    // Same native thread as chat: two llama.cpp contexts working at once on separate threads is a crash risk on phones.
+    private val dispatcher get() = engine.dispatcher
     private val mutex = Mutex()
     @Volatile var loadedPath: String? = null; private set
     var dim: Int = 0; private set
@@ -248,7 +250,7 @@ class EmbeddingEngine @Inject constructor(@ApplicationContext private val contex
     suspend fun embed(texts: List<String>): List<FloatArray?> = mutex.withLock {
         if (loadedPath == null) return@withLock texts.map { null }
         withContext(dispatcher) {
-            com.localai.app.CrashReport.step("indexing knowledge: ${texts.size} chunks")
+            com.localai.app.CrashReport.step(if (texts.size == 1) "embedding a search query or 1 chunk (${texts[0].length} chars)" else "indexing knowledge: ${texts.size} chunks")
             try { LlamaNative.embed(texts.toTypedArray())?.toList() ?: texts.map { null } } finally { com.localai.app.CrashReport.idle() }
         }
     }
