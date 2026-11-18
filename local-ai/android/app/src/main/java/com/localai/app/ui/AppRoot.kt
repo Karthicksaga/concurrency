@@ -10,6 +10,9 @@ import androidx.compose.ui.platform.LocalContext
 import com.localai.app.data.settings.ThemeMode
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.outlined.Home
@@ -90,7 +93,16 @@ fun AppRoot(openChat: kotlinx.coroutines.flow.MutableStateFlow<String?>, openRou
         if (!splash) crash?.let { report ->
             androidx.compose.material3.AlertDialog(onDismissRequest = { com.localai.app.CrashReport.dismiss(ctx); crash = null },
                 title = { Text("LOCAL AI closed unexpectedly") },
-                text = { Text("Sorry about that. A short technical report was saved on this phone. Share it with the developer to help fix it; nothing is sent unless you choose to.") },
+                text = {
+                    androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                        Text("Sorry about that. Share this report with the developer (or send a screenshot of it); nothing is sent unless you choose to.")
+                        androidx.compose.foundation.text.selection.SelectionContainer {
+                            Text(com.localai.app.CrashReport.summary(report), fontSize = 11.sp, lineHeight = 14.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                modifier = androidx.compose.ui.Modifier.padding(top = 12.dp))
+                        }
+                    }
+                },
                 confirmButton = { androidx.compose.material3.TextButton(onClick = { ctx.startActivity(com.localai.app.CrashReport.shareIntent(report)); com.localai.app.CrashReport.dismiss(ctx); crash = null }) { Text("Share report") } },
                 dismissButton = { androidx.compose.material3.TextButton(onClick = { com.localai.app.CrashReport.dismiss(ctx); crash = null }) { Text("Dismiss") } })
         }

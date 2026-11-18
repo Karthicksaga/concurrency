@@ -40,7 +40,7 @@ object CrashReport {
             val am = context.getSystemService(ActivityManager::class.java)
             val seen = prefs(context).getLong("seen", 0)
             am.getHistoricalProcessExitReasons(context.packageName, 0, 5)
-                .filter { it.timestamp > seen && it.reason in setOf(ApplicationExitInfo.REASON_CRASH, ApplicationExitInfo.REASON_CRASH_NATIVE, ApplicationExitInfo.REASON_ANR, ApplicationExitInfo.REASON_LOW_MEMORY) }
+                .filter { x -> x.timestamp > seen && realProblem(x.reason, x.importance, x.processName.orEmpty()) }
                 .take(3).forEach { x ->
                     val what = when (x.reason) {
                         ApplicationExitInfo.REASON_CRASH_NATIVE -> "native crash"; ApplicationExitInfo.REASON_CRASH -> "Java crash"
@@ -53,6 +53,24 @@ object CrashReport {
         if (parts.isEmpty()) return null
         return "LOCAL AI ${BuildConfig.VERSION_NAME} · ${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})\n\n" + parts.joinToString("\n\n")
     }
+
+    /**
+     * Only exits the user actually saw: crashes of the app itself. Android closing the app in the background to free
+     * memory (normal on 6 GB phones with a model loaded) and failures in the ":ocr" helper (already handled, the photo
+     * just isn't read) are not crashes and must not alarm the user on the next start.
+     */
+    fun realProblem(reason: Int, importance: Int, processName: String): Boolean {
+        if (processName.endsWith(":ocr")) return false
+        val foreground = importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE
+        return when (reason) {
+            ApplicationExitInfo.REASON_CRASH, ApplicationExitInfo.REASON_CRASH_NATIVE -> true
+            ApplicationExitInfo.REASON_ANR, ApplicationExitInfo.REASON_LOW_MEMORY -> foreground
+            else -> false
+        }
+    }
+
+    /** The first lines worth reading (exception and top frames), shown in the dialog so a screenshot is enough. */
+    fun summary(report: String): String = report.lineSequence().filter { it.isNotBlank() }.take(9).joinToString("\n").take(900)
 
     fun dismiss(context: Context) {
         file(context).delete()
